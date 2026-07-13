@@ -1,4 +1,4 @@
-# Pulse Ops - Admin Portal Frontend
+# CodecIT - Admin Portal Frontend
 
 > **Human Resource Management System** - Admin Portal
 
@@ -20,7 +20,7 @@ A modern, full-featured HRM admin portal built with React, TypeScript, and Tailw
 
 ## 🎯 Overview
 
-**Pulse Ops** is a comprehensive HR management solution designed to streamline:
+**CodecIT** is a comprehensive HR management solution designed to streamline:
 
 - **User Management** - Employee profiles, roles, and permissions
 - **Attendance Tracking** - Clock in/out, break management, live monitoring
@@ -105,7 +105,7 @@ Create a `.env` file in the root directory:
 
 ```env
 VITE_API_URL=http://localhost:5000/api
-VITE_APP_NAME=Pulse Ops
+VITE_APP_NAME=CodecIT
 ```
 
 ---

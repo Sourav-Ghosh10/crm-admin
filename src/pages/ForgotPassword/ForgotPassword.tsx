@@ -7,9 +7,9 @@ import { Mail, Loader2, ArrowLeft, CheckCircle, KeyRound, Lock, Eye, EyeOff } fr
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { authService } from "../../services/authService";
-import logoStatic from "../../assets/icon.png";
 import { getErrorMessage } from "../../utils/errorHandling";
 import FormError from "../../components/common/FormError/FormError";
+import logoStatic from "../../assets/codecit-logo.png";
 
 // Validation Schemas
 const emailSchema = yup.object({
@@ -72,14 +72,10 @@ const ForgotPassword: React.FC = () => {
     };
 
     const onOtpSubmit = async (data: { otp: string }) => {
-        console.log("onOtpSubmit CALLED with data:", data);
         setIsLoading(true);
         setError(null);
-        console.log("Verifying OTP for:", email, "with code:", data.otp);
         try {
-            console.log("Calling authService.verifyOtp...");
             const token = await authService.verifyOtp(email, data.otp);
-            console.log("authService.verifyOtp SUCCESS, token received:", !!token);
             setResetToken(token);
             setOtpValue(data.otp);
             setStep("reset");
@@ -92,18 +88,14 @@ const ForgotPassword: React.FC = () => {
     };
 
     const onResetSubmit = async (data: ResetFormValues) => {
-        console.log("onResetSubmit CALLED with data:", { ...data, password: "[REDACTED]" });
         setIsLoading(true);
         setError(null);
         try {
             if (resetToken && resetToken !== otpValue) {
-                console.log("Resetting password with token...");
                 await authService.resetPassword(data.password, resetToken);
             } else {
-                console.log("Resetting password with OTP...");
                 await authService.resetPasswordByOtp(email, otpValue, data.password);
             }
-            console.log("Password reset SUCCESS");
             setStep("success");
         } catch (err: unknown) {
             console.error("Reset Password Error caught in handler:", err);
@@ -114,7 +106,7 @@ const ForgotPassword: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen flex">
+        <main className="min-h-screen flex">
             {/* Left Branding */}
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary-dark to-primary-dark relative overflow-hidden">
                 <div className="absolute inset-0 opacity-10">
@@ -124,12 +116,12 @@ const ForgotPassword: React.FC = () => {
                 <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-white">
                     <div className="max-w-md text-center">
                         <div className="mb-8">
-                            <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center">
-                                <img src={logoStatic} alt="Codec IT Logo" className="w-full h-full object-contain rounded-2xl" />
+                            <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2">
+                                <img src={logoStatic} alt="CodecIT Logo" className="w-full h-full object-contain" />
                             </div>
                         </div>
-                        <h1 className="text-4xl font-bold mb-2">Codec IT</h1>
-                        <p className="text-white/80 text-lg">Human Resource Management</p>
+                        <h1 className="text-4xl font-bold mb-2">CodecIT</h1>
+                        <h2 className="text-white/80 text-lg">Human Resource Management</h2>
                     </div>
                 </div>
             </div>
@@ -140,9 +132,9 @@ const ForgotPassword: React.FC = () => {
                     {/* Mobile Logo */}
                     <div className="lg:hidden text-center mb-8">
                         <div className="w-24 h-24 mx-auto mb-4 rounded-2xl overflow-hidden shadow-lg">
-                            <img src={logoStatic} alt="Codec IT Logo" className="w-full h-full object-contain" />
+                            <img src={logoStatic} alt="CodecIT Logo" className="w-full h-full object-cover" />
                         </div>
-                        <h1 className="text-2xl font-bold text-primary">Codec IT</h1>
+                        <div className="text-2xl font-bold text-primary">CodecIT</div>
                     </div>
 
                     <Link to="/login" className="inline-flex items-center text-sm text-foreground-secondary hover:text-primary mb-8 transition-colors">
@@ -283,7 +275,7 @@ const ForgotPassword: React.FC = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </main>
     );
 };
 

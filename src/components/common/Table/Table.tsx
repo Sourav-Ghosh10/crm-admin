@@ -7,7 +7,7 @@ export interface Column<T> {
   minWidth?: number;
   align?: "right" | "left" | "center";
   sticky?: boolean; // New property for sticky columns
-  format?: (value: any, row: T, index: number) => React.ReactNode;
+  format?: (value: unknown, row: T, index: number) => React.ReactNode;
 }
 
 interface TableProps<T> {
@@ -16,6 +16,7 @@ interface TableProps<T> {
   onRowClick?: (row: T) => void;
   isRowClickable?: (row: T) => boolean;
   className?: string;
+  tableClassName?: string;
   emptyState?: React.ReactNode;
   rowClassName?: (row: T) => string;
 }
@@ -28,13 +29,14 @@ const Table = <T,>({
   className,
   emptyState,
   rowClassName,
+  tableClassName,
   keyField = "_id",
 }: TableProps<T> & { keyField?: string }) => {
   return (
     <div
       className={cn("overflow-auto bg-surface", className)}
     >
-      <table className="w-full border-collapse text-left">
+      <table className={cn("w-full border-collapse text-left", tableClassName)}>
         <thead className="">
           <tr className="border-b border-border/50">
             {columns.map((column) => (

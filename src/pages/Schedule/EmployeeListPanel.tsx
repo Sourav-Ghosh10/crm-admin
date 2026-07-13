@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Search, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { userService } from "../../services/userService";
+import { roleService } from "../../services/roleService";
 import type { User, UserFilters } from "../../types/user.types";
+import type { Role } from "../../types/role.types";
+import { SearchInput } from "../../components/common/Search/SearchInput";
 
 interface EmployeeListPanelProps {
     selectedIds: string[];
@@ -25,6 +28,7 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
     });
     const [showFilters, setShowFilters] = useState(true);
     const [departments, setDepartments] = useState<string[]>([]);
+    const [roles, setRoles] = useState<Role[]>([]);
 
     const fetchEmployees = useCallback(async () => {
         try {
@@ -38,7 +42,7 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
             }
 
             // Remove empty strings to avoid validation errors
-            if (!queryFilters.role) delete queryFilters.role;
+            if (!queryFilters.roleId) delete queryFilters.roleId;
             if (!queryFilters.department) delete queryFilters.department;
 
             const response = await userService.getAll(queryFilters);
@@ -53,9 +57,16 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
 
     useEffect(() => {
         const fetchFilters = async () => {
-            // In a real app we'd fetch departments from a service or constant
-            // Keeping hardcoded for now as per previous logic
-            setDepartments(["Operations", "Safety", "Logistics", "IT", "HR"]);
+            try {
+                // Fetch roles from service
+                const rolesRes = await roleService.getAll({ limit: 100, isActive: true });
+                setRoles(rolesRes.data);
+
+                // Fetch departments (or hardcode if no service exists yet)
+                setDepartments(["Operations", "Safety", "Logistics", "IT", "HR"]);
+            } catch (error) {
+                console.error("Failed to fetch filters:", error);
+            }
         };
         fetchFilters();
     }, []);
@@ -104,17 +115,16 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
                 </div>
 
                 {/* Search */}
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-tertiary" />
-                    <input
-                        type="text"
-                        placeholder="Search by name, ID..."
-                        className="w-full pl-10 pr-4 py-2 bg-muted/30 border border-border/50 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+                <div>
+                    <SearchInput
                         value={search}
-                        onChange={(e) => {
-                            setSearch(e.target.value);
+                        onChange={(val) => {
+                            setSearch(val);
                             setPage(1);
                         }}
+                        searchKey="employee-panel-search"
+                        placeholder="Search by name, ID..."
+                        className="bg-muted/30 border-border/50 rounded-xl"
                     />
                 </div>
 
@@ -126,16 +136,16 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
                                 <label className="text-[9px] font-black uppercase tracking-widest text-foreground-tertiary">Role</label>
                                 <select
                                     className="w-full px-2 py-1.5 bg-surface border border-border/50 rounded-lg text-[10px] font-bold outline-none focus:ring-2 focus:ring-primary/20"
-                                    value={filters.role || ""}
+                                    value={typeof filters.roleId === 'string' ? filters.roleId : ""}
                                     onChange={(e) => {
-                                        setFilters({ ...filters, role: e.target.value as User["employment"]["role"] });
+                                        setFilters({ ...filters, roleId: e.target.value || undefined });
                                         setPage(1);
                                     }}
                                 >
                                     <option value="">All Roles</option>
-                                    <option value="employee">Employee</option>
-                                    <option value="manager">Manager</option>
-                                    <option value="admin">Admin</option>
+                                    {roles.map(r => (
+                                        <option key={r._id} value={r._id}>{r.name}</option>
+                                    ))}
                                 </select>
                             </div>
                             <div className="space-y-1.5">
@@ -177,7 +187,7 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
                         <div className="flex justify-end">
                             <button
                                 onClick={() => {
-                                    setFilters({ limit: 10 });
+                                    setFilters({ limit: 6 });
                                     setSearch("");
                                 }}
                                 className="text-[9px] font-black text-primary uppercase tracking-widest hover:underline"
@@ -235,7 +245,7 @@ const EmployeeListPanel: React.FC<EmployeeListPanelProps> = ({
                                         {emp.personalInfo.firstName} {emp.personalInfo.lastName}
                                     </h4>
                                     <p className="text-[10px] font-medium text-foreground-tertiary truncate">
-                                        {emp.employment.role} • {emp.employment.department}
+                                        {typeof emp.employment.role === 'string' ? emp.employment.role : emp.employment.role?.name} • {emp.employment.department}
                                     </p>
                                 </div>
                                 <div className={cn(

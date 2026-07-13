@@ -11,3 +11,6 @@ export interface ApiResponse<T> {
   message: string;
   status: number;
 }
+
+export * from './settings.types';
+

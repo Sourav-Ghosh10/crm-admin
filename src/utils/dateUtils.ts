@@ -1,11 +1,13 @@
 import { format, parseISO } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 // ----------------------------------------------------------------------
-// Constants
+// Dynamic Timezone Helper
 // ----------------------------------------------------------------------
 
-export const OFFICE_TIMEZONE = 'Asia/Kolkata';
+export const getOfficeTimezone = (): string => {
+    return localStorage.getItem('admin_timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+};
 
 // ----------------------------------------------------------------------
 // Core Formatting Types
@@ -14,31 +16,31 @@ export const OFFICE_TIMEZONE = 'Asia/Kolkata';
 type DateInput = string | Date;
 
 // ----------------------------------------------------------------------
-// Admin / Office Timezone Helpers (IST)
+// Admin / Office Timezone Helpers
 // ----------------------------------------------------------------------
 
 /**
- * Formats a date string or object into IST (Asia/Kolkata).
+ * Formats a date string or object into the selected Admin Timezone.
  * Use this for ALL Admin Panel displays.
  */
 export const formatAdminDate = (date: DateInput, formatStr: string = 'MMM d, yyyy'): string => {
-    return formatInTimeZone(date, OFFICE_TIMEZONE, formatStr);
+    return formatInTimeZone(date, getOfficeTimezone(), formatStr);
 };
 
 /**
- * Formats a time string or object into IST (Asia/Kolkata).
+ * Formats a time string or object into the selected Admin Timezone.
  * Use this for ALL Admin Panel displays.
  */
 export const formatAdminTime = (date: DateInput, formatStr: string = 'hh:mm a'): string => {
-    return formatInTimeZone(date, OFFICE_TIMEZONE, formatStr);
+    return formatInTimeZone(date, getOfficeTimezone(), formatStr);
 };
 
 /**
- * Returns the plain date string (YYYY-MM-DD) in IST.
- * Useful for filtering and API queries anchored to IST.
+ * Returns the plain date string (YYYY-MM-DD) in the selected Admin Timezone.
+ * Useful for filtering and API queries anchored to that timezone.
  */
 export const getAdminDateKey = (date: DateInput = new Date()): string => {
-    return formatInTimeZone(date, OFFICE_TIMEZONE, 'yyyy-MM-dd');
+    return formatInTimeZone(date, getOfficeTimezone(), 'yyyy-MM-dd');
 };
 
 // ----------------------------------------------------------------------
@@ -89,7 +91,7 @@ export const parseLocalDate = (dateStr: string): Date => {
 export const formatLocalDate = (dateStr: string, formatStr: string = 'MMM d, yyyy'): string => {
     try {
         return format(parseLocalDate(dateStr), formatStr);
-    } catch (error) {
+    } catch {
         return dateStr;
     }
 };
@@ -152,4 +154,14 @@ export const formatShiftRange = (
             .join(', ');
     }
     return formatSingleRange(startTime as string, endTime as string);
+};
+
+/**
+ * Creates a Date object anchored to a specific timezone.
+ * Useful for combining a date and a time string (HH:mm) while respecting the source timezone (e.g. Employee's location).
+ */
+export const getZonedDate = (date: DateInput, timeStr: string, tz: string): Date => {
+    const dateStr = typeof date === 'string' ? date.slice(0, 10) : format(date, 'yyyy-MM-dd');
+    // Ensure time has seconds for consistent parsing if needed, but 'HH:mm' is usually enough
+    return fromZonedTime(`${dateStr} ${timeStr}`, tz);
 };

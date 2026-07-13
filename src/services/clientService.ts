@@ -1,5 +1,6 @@
 import api from "./api";
-import type { Client, CreateClientRequest, UpdateClientRequest, ClientFilters, PaginatedClientResponse } from "../types/client.types";
+import type { Client, CreateClientRequest, UpdateClientRequest, ClientFilters, PaginatedClientResponse, ProfitSummary } from "../types/client.types";
+import type { User } from "../types/user.types";
 
 const normalizeValue = (value: unknown): unknown => {
     if (value === null || value === undefined) return value;
@@ -22,10 +23,10 @@ const normalizeValue = (value: unknown): unknown => {
     return value;
 };
 
-const mapClient = (client: any): Client => {
-    if (!client) return client;
-    const normalized = normalizeValue(client) as any;
-    const idValue = normalized._id || normalized.id || "";
+const mapClient = (client: unknown): Client => {
+    if (!client) return client as Client;
+    const normalized = normalizeValue(client) as Record<string, unknown>;
+    const idValue = (normalized._id as string) || (normalized.id as string) || "";
     return {
         ...normalized,
         id: idValue,
@@ -51,8 +52,8 @@ export const clientService = {
         }
 
         // Nested structure { clients: [], total: ... }
-        if (data && typeof data === 'object' && 'clients' in data && Array.isArray((data as any).clients)) {
-            const d = data as any;
+        if (data && typeof data === 'object' && 'clients' in data && Array.isArray((data as { clients: unknown[] }).clients)) {
+            const d = data as { clients: unknown[]; total?: number; page?: number; limit?: number; totalPages?: number };
             return {
                 clients: d.clients.map(mapClient),
                 total: d.total || d.clients.length,
@@ -95,6 +96,21 @@ export const clientService = {
 
     assignEmployees: async (clientId: string, employeeIds: string[]): Promise<Client> => {
         const response = await api.post(`/clients/${clientId}/assign`, { employeeIds });
+        return response.data.data || response.data;
+    },
+
+    getAssignedEmployees: async (clientId: string): Promise<User[]> => {
+        const response = await api.get(`/clients/${clientId}/assigned-employees`);
+        return (response.data.data || response.data) as User[];
+    },
+
+    getMyAssignedEmployees: async (): Promise<User[]> => {
+        const response = await api.get('/clients/me/assigned-employees');
+        return (response.data.data || response.data) as User[];
+    },
+
+    getProfitSummary: async (): Promise<ProfitSummary> => {
+        const response = await api.get('/clients/profit-summary');
         return response.data.data || response.data;
     }
 };

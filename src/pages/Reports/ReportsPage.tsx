@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils";
+import { SearchInput } from "../../components/common/Search/SearchInput";
 
 interface ReportPath {
     title: string;
@@ -95,14 +96,15 @@ const ReportsPage: React.FC = () => {
     const [searchTerm, setSearchTerm] = React.useState("");
 
     const filteredCategories = React.useMemo(() => {
-        if (!searchTerm) return reportCategories;
+        const term = searchTerm.trim().toLowerCase();
+        if (!term) return reportCategories;
 
         return reportCategories.map(category => ({
             ...category,
             paths: category.paths.filter(path =>
-                path.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                path.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                category.title.toLowerCase().includes(searchTerm.toLowerCase())
+                path.title.toLowerCase().includes(term) ||
+                path.description.toLowerCase().includes(term) ||
+                category.title.toLowerCase().includes(term)
             )
         })).filter(category => category.paths.length > 0);
     }, [searchTerm]);
@@ -126,14 +128,13 @@ const ReportsPage: React.FC = () => {
                     </p>
                 </div>
 
-                <div className="relative group w-full md:w-80">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-tertiary group-focus-within:text-primary transition-colors" />
-                    <input
-                        type="text"
-                        placeholder="Search reports..."
+                <div className="w-full md:w-80">
+                    <SearchInput
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 bg-surface border border-border/40 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/5 focus:border-primary transition-all outline-none shadow-sm"
+                        onChange={setSearchTerm}
+                        searchKey="reports"
+                        placeholder="Search reports..."
+                        className="bg-surface border-border/40 rounded-2xl h-12"
                     />
                 </div>
             </div>

@@ -5,6 +5,8 @@ import type { EmployeeRoster } from '../../types/schedule.types';
 import { cn } from '../../lib/utils';
 import { Coffee } from 'lucide-react';
 import TimezoneDualView from '../../components/common/TimezoneDualView';
+import { useAppSelector } from '../../store/hooks';
+import { getZonedDate } from '../../utils/dateUtils';
 
 interface ScheduleTableViewProps {
     rosters: EmployeeRoster[];
@@ -21,9 +23,12 @@ interface FlatShift {
     endTime: string[];
     status: string;
     employeeTimezone: string;
+    adminTimezone: string;
 }
 
 const ScheduleTableView: React.FC<ScheduleTableViewProps> = ({ rosters }) => {
+    const adminTimezone = useAppSelector((state) => state.ui.selectedTimezone);
+
     // Flatten roaster data for a table
     const flatRows: FlatShift[] = [];
 
@@ -43,6 +48,7 @@ const ScheduleTableView: React.FC<ScheduleTableViewProps> = ({ rosters }) => {
                 endTime: endTimes.filter(Boolean) as string[],
                 status: isSameDay(parseISO(dateKey), new Date()) ? 'Logged In' : 'Logged Out',
                 employeeTimezone: roster.employment?.timezone || 'Asia/Kolkata',
+                adminTimezone: adminTimezone,
             });
         });
     });
@@ -76,16 +82,11 @@ const ScheduleTableView: React.FC<ScheduleTableViewProps> = ({ rosters }) => {
             _id: 'time',
             label: 'Schedule',
             format: (_, row) => {
-                const adminTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
                 return (
                     <div className="space-y-2">
                         {row.startTime.map((start, i) => {
-                            const date = parseISO(row.date);
                             const combine = (timeStr: string) => {
-                                const [h, m] = timeStr.split(':').map(Number);
-                                const d = new Date(date);
-                                d.setHours(h, m, 0, 0);
-                                return d;
+                                return getZonedDate(row.date, timeStr, row.employeeTimezone);
                             };
                             return (
                                 <TimezoneDualView
@@ -93,7 +94,7 @@ const ScheduleTableView: React.FC<ScheduleTableViewProps> = ({ rosters }) => {
                                     startTime={combine(start)}
                                     endTime={combine(row.endTime[i])}
                                     primaryTimezone={row.employeeTimezone}
-                                    secondaryTimezone={adminTZ}
+                                    secondaryTimezone={row.adminTimezone}
                                     variant="minimal"
                                 />
                             );

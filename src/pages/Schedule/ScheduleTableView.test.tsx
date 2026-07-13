@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import ScheduleTableView from "./ScheduleTableView";
+import type { EmployeeRoster } from "../../types/schedule.types";
 
 describe("ScheduleTableView Component", () => {
     const mockRosters = [
@@ -18,7 +19,7 @@ describe("ScheduleTableView Component", () => {
                 }
             }
         }
-    ] as any;
+    ] as unknown as EmployeeRoster[];
 
     it("renders table with shifts", () => {
         render(
@@ -65,7 +66,7 @@ describe("ScheduleTableView Component", () => {
                     }
                 }
             }
-        ] as any;
+        ] as unknown as EmployeeRoster[];
 
         render(
             <ScheduleTableView

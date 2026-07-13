@@ -3,12 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import LeaveTypesList from "./LeaveTypesList";
 import { leaveTypeService } from "../../../services/leaveTypeService";
 import { jest } from "@jest/globals";
+import type { LeaveType, PaginatedResponse } from "../../../types/organization.types";
 
 jest.mock("../../../services/leaveTypeService");
 
 describe("LeaveTypesList Page", () => {
     beforeEach(() => {
-        (leaveTypeService.getAll as any).mockResolvedValue({
+        jest.mocked(leaveTypeService.getAll).mockResolvedValue({
             data: [
                 {
                     _id: "1",
@@ -36,8 +37,10 @@ describe("LeaveTypesList Page", () => {
                 }
             ],
             total: 2,
-            totalPages: 1
-        });
+            totalPages: 1,
+            page: 1,
+            limit: 10
+        } as unknown as PaginatedResponse<LeaveType>);
     });
 
     it("renders loading state initially", () => {

@@ -72,8 +72,8 @@ export const leaveService = {
   },
 
   // Admin: Update specific employee's balance
-  updateEmployeeBalance: async (userId: string, leaveBalance: Record<string, number>) => {
-    const response = await api.patch(`/leave-requests/employee/${userId}/balance`, { leaveBalance });
+  updateEmployeeBalance: async (userId: string, leaveBalance: Record<string, number>, totalLeaveBalance?: number) => {
+    const response = await api.patch(`/leave-requests/employee/${userId}/balance`, { leaveBalance, totalLeaveBalance });
     return response.data.data;
   },
 

@@ -8,13 +8,15 @@ jest.mock("../../../services/holidayService");
 
 describe("HolidaysList Page", () => {
     beforeEach(() => {
-        (holidayService.getAll as any).mockResolvedValue({
+        jest.mocked(holidayService.getAll).mockResolvedValue({
             data: [
                 { _id: "1", name: "New Year", date: "2024-01-01", isActive: true, isRecurring: true },
                 { _id: "2", name: "Christmas", date: "2024-12-25", isActive: true, isRecurring: true }
             ],
             total: 2,
-            totalPages: 1
+            totalPages: 1,
+            page: 1,
+            limit: 10
         });
     });
 

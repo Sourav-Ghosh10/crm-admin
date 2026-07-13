@@ -1,5 +1,6 @@
 import React, { forwardRef } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Loader2 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 
 const buttonVariants = cva(
@@ -15,6 +16,9 @@ const buttonVariants = cva(
         secondary: "bg-muted text-foreground hover:bg-muted/80",
         ghost: "hover:bg-muted hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
+        destructiveOutline: "border-2 border-error bg-transparent text-error hover:bg-error hover:text-white",
+        successOutline: "border-2 border-success bg-transparent text-success hover:bg-success hover:text-white",
+        secondaryOutline: "border border-border bg-transparent text-foreground-tertiary hover:bg-muted hover:text-foreground",
       },
       size: {
         default: "h-10 px-5 py-2.5 text-sm",
@@ -32,7 +36,7 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
+  VariantProps<typeof buttonVariants> {
   startIcon?: React.ReactNode;
   endIcon?: React.ReactNode;
   fullWidth?: boolean;
@@ -69,26 +73,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       >
         {isLoading ? (
           <>
-            <svg
-              className="h-5 w-5 animate-spin text-white"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-              />
-            </svg>
+            <Loader2 className="h-4 w-4 animate-spin" />
             <span>Processing...</span>
           </>
         ) : (
@@ -98,6 +83,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             {endIcon && <span className="shrink-0">{endIcon}</span>}
           </>
         )}
+
       </button>
     );
   }

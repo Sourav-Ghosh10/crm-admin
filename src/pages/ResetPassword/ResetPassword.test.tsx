@@ -5,8 +5,7 @@ import ResetPassword from './ResetPassword';
 import { authService } from '../../services/authService';
 
 // Mocks for assets
-jest.mock('../../assets/pulse-ops-logo-animated.mp4', () => 'video.mp4');
-jest.mock('../../assets/pulse-ops-logo.png', () => 'logo.png');
+jest.mock('../../assets/codecit-logo.png', () => 'logo.png');
 
 describe('ResetPassword', () => {
     beforeEach(() => {
@@ -56,7 +55,7 @@ describe('ResetPassword', () => {
     });
 
     it('calls authService.resetPassword on successful submission', async () => {
-        (authService.resetPassword as any).mockResolvedValue(undefined as never);
+        jest.mocked(authService.resetPassword).mockResolvedValue(undefined as never);
         renderComponent('my-token');
 
         fireEvent.change(screen.getByLabelText(/^New Password$/i), { target: { value: 'password123' } });
@@ -72,7 +71,7 @@ describe('ResetPassword', () => {
     });
 
     it('displays error message on API failure', async () => {
-        (authService.resetPassword as any).mockRejectedValue({
+        jest.mocked(authService.resetPassword).mockRejectedValue({
             response: { data: { message: 'Token expired' } }
         } as never);
         renderComponent();

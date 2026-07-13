@@ -7,7 +7,8 @@ import { Lock, Eye, EyeOff, Loader2, ArrowLeft, CheckCircle, AlertCircle } from 
 import { Link, useSearchParams } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import { authService } from "../../services/authService";
-import logoStatic from "../../assets/icon.png";
+// import logoAnimated from "../../assets/pulse-ops-logo-animated.mp4";
+import logoStatic from "../../assets/codecit-logo.png";
 import { getErrorMessage } from "../../utils/errorHandling";
 import FormError from "../../components/common/FormError/FormError";
 
@@ -91,7 +92,7 @@ const ResetPassword: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen flex">
+        <main className="min-h-screen flex">
             {/* Left side - Branding */}
             <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary-dark to-primary-dark relative overflow-hidden">
                 <div className="absolute inset-0 opacity-10">
@@ -102,15 +103,15 @@ const ResetPassword: React.FC = () => {
                 <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-white">
                     <div className="max-w-md text-center">
                         <div className="mb-8">
-                            <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center">
+                            <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2">
                                 <img
                                     src={logoStatic}
-                                    alt="Codec IT Logo"
-                                    className="w-full h-full object-contain rounded-2xl"
+                                    alt="CodecIT Logo"
+                                    className="w-full h-full object-contain"
                                 />
                             </div>
-                            <h1 className="text-4xl font-bold mb-2">Codec IT</h1>
-                            <p className="text-white/80 text-lg">Human Resource Management</p>
+                            <h1 className="text-4xl font-bold mb-2">CodecIT</h1>
+                            <h2 className="text-white/80 text-lg">Human Resource Management</h2>
                         </div>
                     </div>
                 </div>
@@ -124,11 +125,11 @@ const ResetPassword: React.FC = () => {
                         <div className="w-24 h-24 mx-auto mb-4 rounded-2xl overflow-hidden shadow-lg">
                             <img
                                 src={logoStatic}
-                                alt="Codec IT Logo"
-                                className="w-full h-full object-contain"
+                                alt="CodecIT Logo"
+                                className="w-full h-full object-cover"
                             />
                         </div>
-                        <h1 className="text-2xl font-bold text-primary">Codec IT</h1>
+                        <div className="text-2xl font-bold text-primary">CodecIT</div>
                     </div>
 
                     <Link
@@ -297,7 +298,7 @@ const ResetPassword: React.FC = () => {
                     )}
                 </div>
             </div>
-        </div>
+        </main>
     );
 };
 

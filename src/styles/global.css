@@ -3,7 +3,7 @@
 /* Custom theme colors based on Pulse Ops design system */
 @theme {
   /* Primary Colors */
-  --color-primary: #1976d2;
+  --color-primary: #1565c0;
   --color-primary-dark: #0d47a1;
   --color-primary-light: #42a5fa;
   --color-primary-foreground: #ffffff;
@@ -26,16 +26,16 @@
   --color-background: #f5f7fa;
   --color-surface: #ffffff;
   --color-foreground: #2c3e50;
-  --color-foreground-secondary: #78909c;
-  --color-foreground-tertiary: #546e7a;
+  --color-foreground-secondary: #546e7a;
+  --color-foreground-tertiary: #455a64;
   --color-border: #e0e0e0;
   --color-border-light: #f0f0f0;
   --color-input: #e0e0e0;
-  --color-ring: #1976d2;
+  --color-ring: #1565c0;
 
   /* Muted */
   --color-muted: #f5f7fa;
-  --color-muted-foreground: #78909c;
+  --color-muted-foreground: #546e7a;
 
   /* Destructive */
   --color-destructive: #e53935;
@@ -203,4 +203,15 @@
     from { width: 0; }
     to { width: 100%; }
   }
+}
+
+/* Hide numeric spin buttons globally */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type=number] {
+  -moz-appearance: textfield;
 }

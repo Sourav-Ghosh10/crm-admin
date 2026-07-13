@@ -1,6 +1,7 @@
 import api from "./api";
 import type { Attendance, AttendanceFilters } from "../types/attendance.types";
 import type { AxiosResponse } from "axios";
+import { normalizeAttendanceRecord } from "../utils/attendanceLocationUtils";
 
 export interface PaginatedAttendanceResponse {
   attendances: Attendance[];
@@ -45,11 +46,13 @@ const mapAttendance = (item: Record<string, unknown>): Attendance => {
   if (!item) return item as unknown as Attendance;
   const normalized = normalizeValue(item) as Record<string, unknown>;
   const idValue = (normalized._id || normalized.id || "") as string;
-  return {
+  const mapped = {
     ...normalized,
     id: idValue,
     _id: idValue,
   } as unknown as Attendance;
+
+  return normalizeAttendanceRecord(mapped);
 };
 
 export const attendanceService = {
@@ -109,9 +112,75 @@ export const attendanceService = {
   },
 
   getByDateAndUser: async (date: string, userId: string): Promise<Attendance> => {
-    const response: AxiosResponse = await api.get(`/attendance/${date}/${userId}`);
+    try {
+      const response: AxiosResponse = await api.get(`/attendance/${date}/${userId}`);
+      const root = response.data;
+      const data = root?.data || root;
+      return mapAttendance(data as Record<string, unknown>);
+    } catch (error: unknown) {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status !== 404) {
+        throw error;
+      }
+
+      // Fallback for backends that don't expose /attendance/:date/:userId
+      // and only support filtering through /attendance.
+      const fallback = await attendanceService.getAll({
+        userId,
+        startDate: date,
+        endDate: date,
+        page: 1,
+        limit: 50,
+      });
+
+      const dateKey = date.slice(0, 10);
+      const record = (fallback.attendances || []).find((item) => {
+        const itemDate = String(item.date || "").slice(0, 10);
+        const emp = item.employeeId;
+        const itemUserId = typeof emp === "string" ? emp : (emp?._id || "");
+        return itemDate === dateKey && itemUserId === userId;
+      });
+
+      if (!record) {
+        throw error;
+      }
+
+      return record;
+    }
+  },
+
+  getSummary: async (params?: AttendanceFilters): Promise<PaginatedAttendanceResponse> => {
+    const response = await api.get("/attendance/summary", { params });
     const root = response.data;
     const data = root?.data || root;
-    return mapAttendance(data as Record<string, unknown>);
+
+    let items: Attendance[] = [];
+    let pagination: any = {};
+
+    if (Array.isArray(data)) {
+      items = data.map(mapAttendance);
+      pagination = root?.pagination || {};
+    } else {
+      const rawItems = data.attendance || data.attendances || [];
+      items = Array.isArray(rawItems) ? rawItems.map(mapAttendance) : [];
+      pagination = data.pagination || {};
+    }
+
+    return {
+      attendances: items,
+      total: pagination.total || items.length || 0,
+      page: pagination.page || 1,
+      limit: pagination.limit || 10,
+      totalPages: pagination.pages || pagination.totalPages || 1
+    };
+  },
+
+  getStats: async (params?: { date?: string; department?: string; designation?: string }) => {
+    const response = await api.get("/attendance/summary/stats", { params });
+    return response.data.data;
+  },
+  getLastActiveLocations: async (): Promise<any[]> => {
+    const response = await api.get("/location/last-active");
+    return response.data?.data || [];
   },
 };

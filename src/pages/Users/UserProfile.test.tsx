@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import UserProfile from "./UserProfile";
 import { userService } from "../../services/userService";
 import { jest } from "@jest/globals";
+import type { User } from "../../types/user.types";
 
 jest.mock("../../services/userService");
 
@@ -46,7 +47,7 @@ describe("UserProfile Page", () => {
     };
 
     beforeEach(() => {
-        (userService.getById as any).mockResolvedValue(mockUser);
+        jest.mocked(userService.getById).mockResolvedValue(mockUser as unknown as User);
     });
 
     it("renders loading state then profile info", async () => {
@@ -68,7 +69,7 @@ describe("UserProfile Page", () => {
     });
 
     it("shows error state when user not found", async () => {
-        (userService.getById as any).mockResolvedValue(null);
+        jest.mocked(userService.getById).mockResolvedValue(null as unknown as User);
 
         render(
             <MemoryRouter initialEntries={["/users/999"]}>

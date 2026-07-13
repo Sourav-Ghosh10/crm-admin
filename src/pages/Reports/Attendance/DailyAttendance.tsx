@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { Download } from "lucide-react";
+import { format } from "date-fns";
 import { attendanceService } from "../../../services/attendanceService";
 import type { Attendance, AttendanceFilters } from "../../../types/attendance.types";
 import Table from "../../../components/common/Table";
@@ -46,8 +47,8 @@ const DailyAttendanceReport: React.FC = () => {
         try {
             setLoading(true);
             const now = new Date();
-            const start = new Date(now.setHours(0, 0, 0, 0)).toISOString();
-            const end = new Date(now.setHours(23, 59, 59, 999)).toISOString();
+            const start = format(now, "yyyy-MM-dd");
+            const end = format(now, "yyyy-MM-dd");
 
             const filters: AttendanceFilters = {
                 page,
@@ -55,7 +56,7 @@ const DailyAttendanceReport: React.FC = () => {
                 startDate: start,
                 endDate: end,
                 status: statusFilter === "all" ? undefined : statusFilter,
-                search: searchTerm || undefined
+                search: searchTerm.trim() || undefined
             };
 
             const resp = await attendanceService.getAll(filters);
@@ -83,7 +84,9 @@ const DailyAttendanceReport: React.FC = () => {
                 type: 'attendance',
                 format,
                 startDate: start,
-                endDate: end
+                endDate: end,
+                status: statusFilter === "all" ? undefined : statusFilter,
+                search: searchTerm.trim() || undefined
             });
         } catch (err) {
             console.error("Export failed:", err);
@@ -94,7 +97,7 @@ const DailyAttendanceReport: React.FC = () => {
         {
             _id: "name",
             label: "Employee",
-            format: (_: any, row: Attendance) => (
+            format: (_: unknown, row: Attendance) => (
                 <div className="flex items-center gap-3">
                     <Avatar
                         src={row.employeeId?.personalInfo?.profilePicture}
@@ -106,15 +109,24 @@ const DailyAttendanceReport: React.FC = () => {
                         <span className="font-bold text-sm text-foreground">
                             {row.name || row.employeeId?.personalInfo?.firstName + " " + row.employeeId?.personalInfo?.lastName}
                         </span>
-                        {/* <span className="text-[10px] text-foreground-tertiary">{row.employeeId?.employeeId || "N/A"}</span> */}
+                        <span className="text-[10px] text-foreground-tertiary">{row.employeeId?.employeeId || "N/A"}</span>
                     </div>
                 </div>
             )
         },
         {
+            _id: "dept",
+            label: "Dept",
+            format: (_: unknown, row: Attendance) => (
+                <span className="text-sm font-bold text-foreground-secondary">
+                    {row.employeeId?.employment?.department || "N/A"}
+                </span>
+            )
+        },
+        {
             _id: "checkIn",
             label: "Punch In",
-            format: (_: any, row: Attendance) => (
+            format: (_: unknown, row: Attendance) => (
                 <span className="text-sm font-mono text-foreground-secondary">
                     {row.checkIn?.time ? new Date(row.checkIn.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
                 </span>
@@ -123,7 +135,7 @@ const DailyAttendanceReport: React.FC = () => {
         {
             _id: "checkOut",
             label: "Punch Out",
-            format: (_: any, row: Attendance) => (
+            format: (_: unknown, row: Attendance) => (
                 <span className="text-sm font-mono text-foreground-secondary">
                     {row.checkOut?.time ? new Date(row.checkOut.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "--:--"}
                 </span>
@@ -132,16 +144,17 @@ const DailyAttendanceReport: React.FC = () => {
         {
             _id: "totalHours",
             label: "Working Hours",
-            format: (val: number) => {
-                const h = Math.floor(val / 60);
-                const m = val % 60;
-                return <span className="text-sm font-bold text-foreground">{h}h {m}m</span>;
+            format: (val: unknown) => {
+                const totalHours = Number(val) || 0;
+                const hh = Math.floor(totalHours);
+                const mm = Math.round((totalHours - hh) * 60);
+                return <span className="text-sm font-bold text-foreground">{hh}h {mm}m</span>;
             }
         },
         {
             _id: "status",
             label: "Status",
-            format: (val: string) => getStatusBadge(val)
+            format: (val: unknown) => getStatusBadge(String(val))
         }
     ];
 
@@ -157,14 +170,24 @@ const DailyAttendanceReport: React.FC = () => {
                     <h1 className="text-2xl font-black text-foreground tracking-tight">Daily Attendance Report</h1>
                     <p className="text-xs font-bold text-foreground-tertiary mt-1 uppercase tracking-wider">Show records for {new Date().toLocaleDateString()}</p>
                 </div>
-                <Button
-                    variant="outline"
-                    startIcon={<Download className="w-4 h-4" />}
-                    className="rounded-xl"
-                    onClick={() => handleExport('csv')}
-                >
-                    Export CSV
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        startIcon={<Download className="w-4 h-4" />}
+                        className="rounded-xl border-primary text-primary"
+                        onClick={() => handleExport('pdf')}
+                    >
+                        Export PDF
+                    </Button>
+                    <Button
+                        variant="outline"
+                        startIcon={<Download className="w-4 h-4" />}
+                        className="rounded-xl"
+                        onClick={() => handleExport('csv')}
+                    >
+                        Export CSV
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -172,6 +195,7 @@ const DailyAttendanceReport: React.FC = () => {
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="daily-attendance-report"
                         placeholder="Search employee..."
                     />
                 </div>
@@ -185,7 +209,9 @@ const DailyAttendanceReport: React.FC = () => {
                             { value: "all", label: "All Status" },
                             { value: "present", label: "Present" },
                             { value: "absent", label: "Absent" },
-                            { value: "late", label: "Late" }
+                            { value: "late", label: "Late" },
+                            { value: "on-leave", label: "On-Leave" },
+                            { value: "half-day", label: "Half-Day" }
                         ]
                     }]}
                 />

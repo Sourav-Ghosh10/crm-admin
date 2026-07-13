@@ -5,6 +5,8 @@ import { attendanceService } from "../../services/attendanceService";
 import { userService } from "../../services/userService";
 import { jest } from "@jest/globals";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { User } from "../../types/user.types";
+import type { Attendance } from "../../types/attendance.types";
 
 jest.mock("../../services/attendanceService");
 jest.mock("../../services/userService");
@@ -18,7 +20,8 @@ jest.mock("date-fns", () => {
             if (fmt === "MMM dd, yyyy") return "Jan 01, 2024";
             if (fmt === "EEEE") return "Monday";
             if (fmt === "hh:mm a") return "09:00 AM"; // Mock time
-            return (original as any).format(date, fmt);
+            const actualFormat = (original as { format: (d: Date, f: string) => string }).format;
+            return actualFormat(date, fmt);
         },
         startOfWeek: () => new Date("2024-01-01"),
         endOfWeek: () => new Date("2024-01-07"),
@@ -56,8 +59,8 @@ describe("EmployeeAttendanceDetail Page", () => {
     };
 
     beforeEach(() => {
-        (userService.getById as any).mockResolvedValue(mockEmployee);
-        (attendanceService.getAll as any).mockResolvedValue(mockAttendanceData);
+        jest.mocked(userService.getById).mockResolvedValue(mockEmployee as unknown as User);
+        jest.mocked(attendanceService.getAll).mockResolvedValue(mockAttendanceData as unknown as { attendances: Attendance[], totalPages: number, total: number, page: number, limit: number });
     });
 
     it("renders employee details and attendance table", async () => {

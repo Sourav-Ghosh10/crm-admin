@@ -3,19 +3,23 @@ import { MemoryRouter } from "react-router-dom";
 import ReimbursementTypesList from "./ReimbursementTypesList";
 import { reimbursementTypeService } from "../../../services/reimbursementTypeService";
 import { jest } from "@jest/globals";
+import type { ReimbursementType } from "../../../types/reimbursement.types";
+import type { PaginatedResponse } from "../../../types/organization.types";
 
 jest.mock("../../../services/reimbursementTypeService");
 
 describe("ReimbursementTypesList Page", () => {
     beforeEach(() => {
-        (reimbursementTypeService.getAll as any).mockResolvedValue({
+        jest.mocked(reimbursementTypeService.getAll).mockResolvedValue({
             data: [
                 { _id: "1", name: "Travel", description: "Travel expenses", isActive: true, requiresReceipt: true },
                 { _id: "2", name: "Meals", description: "Meal expenses", isActive: true, requiresReceipt: true }
             ],
             total: 2,
-            totalPages: 1
-        });
+            totalPages: 1,
+            page: 1,
+            limit: 10
+        } as unknown as PaginatedResponse<ReimbursementType>);
     });
 
     it("renders loading state initially", () => {

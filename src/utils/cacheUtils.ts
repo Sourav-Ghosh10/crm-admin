@@ -10,7 +10,6 @@ export const cacheUtils = {
      */
     clearAll: () => {
         apiCache.clear();
-        console.log('All API cache cleared');
     },
 
     /**
@@ -18,7 +17,6 @@ export const cacheUtils = {
      */
     clearPattern: (pattern: string) => {
         apiCache.removePattern(pattern);
-        console.log(`Cache cleared for pattern: ${pattern}`);
     },
 
     /**
@@ -26,7 +24,6 @@ export const cacheUtils = {
      */
     clearScheduleCache: () => {
         apiCache.removePattern('/schedules');
-        console.log('Schedule cache cleared');
     },
 
     /**
@@ -34,7 +31,6 @@ export const cacheUtils = {
      */
     clearAttendanceCache: () => {
         apiCache.removePattern('/attendance');
-        console.log('Attendance cache cleared');
     },
 
     /**
@@ -42,7 +38,6 @@ export const cacheUtils = {
      */
     clearUserCache: () => {
         apiCache.removePattern('/users');
-        console.log('User cache cleared');
     },
 
     /**
@@ -57,7 +52,6 @@ export const cacheUtils = {
      */
     cleanup: () => {
         apiCache.cleanup();
-        console.log('Cache cleanup completed');
     },
 };
 

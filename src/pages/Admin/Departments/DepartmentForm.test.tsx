@@ -47,7 +47,7 @@ describe("DepartmentForm Component", () => {
 
         await waitFor(() => {
             expect(mockOnSubmit).toHaveBeenCalled();
-            const callArgs = mockOnSubmit.mock.calls[0][0] as any;
+            const callArgs = (mockOnSubmit.mock.calls[0][0] || {}) as Record<string, unknown>;
             expect(callArgs.name).toBe("Engineering");
             expect(callArgs.description).toBe("Software Engineering");
             expect(callArgs.isActive).toBe(true);

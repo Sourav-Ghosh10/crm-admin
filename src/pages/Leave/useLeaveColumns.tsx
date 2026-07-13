@@ -5,12 +5,17 @@ import {
     Download,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "react-hot-toast";
 import Button from "../../components/common/Button";
 import type { Column } from "../../components/common/Table/Table";
 import type { LeaveRequest } from "../../types/leave.types";
 import Avatar from "../../components/common/Avatar";
 import TimezoneDualView from "../../components/common/TimezoneDualView";
 import { StatusBadge } from "./StatusBadge";
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
+
+import { useAppSelector } from "../../store/hooks";
 
 interface UseLeaveColumnsProps {
     onApprove: (request: LeaveRequest) => void;
@@ -21,7 +26,45 @@ interface UseLeaveColumnsProps {
 }
 
 export const useLeaveColumns = ({ onApprove, onReject, currentUserId }: UseLeaveColumnsProps) => {
-    const adminTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const adminTimezone = useAppSelector((state) => state.ui.selectedTimezone);
+
+    const { hasPermission: canApproveLeave } = usePermissions(PERMISSIONS.LEAVE_APPROVE);
+    const { hasPermission: canRejectLeave } = usePermissions(PERMISSIONS.LEAVE_REJECT);
+
+    const handleDownload = async (url: string, fileName: string) => {
+        try {
+            // If it's a data URL, we can download it directly
+            if (url.startsWith('data:')) {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                return;
+            }
+
+            // For external URLs, fetch as blob to force download
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success("Download started");
+        } catch (error) {
+            console.error("Download failed:", error);
+            // Fallback: open in new tab
+            window.open(url, '_blank', 'noopener,noreferrer');
+        }
+    };
 
     const columns: Column<LeaveRequest>[] = useMemo(() => [
         {
@@ -132,9 +175,22 @@ export const useLeaveColumns = ({ onApprove, onReject, currentUserId }: UseLeave
                         {value as string}
                     </p>
                     {row.attachments && row.attachments.length > 0 && (
-                        <Button variant="ghost" size="sm" className="h-6 w-fit text-[10px] font-bold gap-1 text-info hover:bg-info/10 hover:text-info px-1.5 -ml-1.5">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-fit text-[10px] font-bold gap-1 text-info hover:bg-info/10 hover:text-info px-1.5 -ml-1.5"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                row.attachments.forEach((file) => {
+                                    const url = typeof file === 'string' ? file : file.fileUrl;
+                                    const fileName = typeof file === 'string' ? "Attachment" : file.fileName;
+                                    if (!url) return;
+                                    handleDownload(url, fileName);
+                                });
+                            }}
+                        >
                             <Download className="w-3 h-3" />
-                            Attachment
+                            {row.attachments.length > 1 ? `Attachments (${row.attachments.length})` : 'Attachment'}
                         </Button>
                     )}
                 </div>
@@ -163,9 +219,7 @@ export const useLeaveColumns = ({ onApprove, onReject, currentUserId }: UseLeave
                     ? reportingManager
                     : reportingManager?._id;
 
-                const isAuthorized =
-                    // isAdmin || canApproveLeave ||
-                    (currentUserId && reportingManagerId === currentUserId);
+                const isAuthorized = canApproveLeave || canRejectLeave || (currentUserId && reportingManagerId === currentUserId);
 
                 if (!isAuthorized) {
                     return (
@@ -177,33 +231,37 @@ export const useLeaveColumns = ({ onApprove, onReject, currentUserId }: UseLeave
 
                 return (
                     <div className="flex items-center justify-end gap-2">
-                        <Button
-                            className="w-8 h-8 rounded-lg shadow-success/20 text-success bg-success/10 hover:bg-success hover:text-white border border-success/20 p-0"
-                            variant="ghost"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onApprove(row);
-                            }}
-                            title="Approve"
-                        >
-                            <CheckCircle className="w-4 h-4" />
-                        </Button>
-                        <Button
-                            className="w-8 h-8 rounded-lg text-error bg-error/10 hover:bg-error hover:text-white border border-error/20 p-0"
-                            variant="ghost"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onReject(row);
-                            }}
-                            title="Reject"
-                        >
-                            <XCircle className="w-4 h-4" />
-                        </Button>
+                        {(canApproveLeave || reportingManagerId === currentUserId) && (
+                            <Button
+                                className="w-8 h-8 rounded-lg shadow-success/20 text-success bg-success/10 hover:bg-success hover:text-white border border-success/20 p-0"
+                                variant="ghost"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onApprove(row);
+                                }}
+                                title="Approve"
+                            >
+                                <CheckCircle className="w-4 h-4" />
+                            </Button>
+                        )}
+                        {(canRejectLeave || reportingManagerId === currentUserId) && (
+                            <Button
+                                className="w-8 h-8 rounded-lg text-error bg-error/10 hover:bg-error hover:text-white border border-error/20 p-0"
+                                variant="ghost"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onReject(row);
+                                }}
+                                title="Reject"
+                            >
+                                <XCircle className="w-4 h-4" />
+                            </Button>
+                        )}
                     </div>
                 );
             }
         }
-    ], [onApprove, onReject, currentUserId]);
+    ], [onApprove, onReject, currentUserId, adminTimezone, canApproveLeave, canRejectLeave]);
 
     return columns;
 };

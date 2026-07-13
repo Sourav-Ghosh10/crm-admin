@@ -32,4 +32,25 @@ export const notificationService = {
       console.error("Failed to register notification token:", err);
     }
   },
+
+  /**
+   * Fetch recent notifications for the current user.
+   */
+  getNotifications: async () => {
+    return api.get("/notifications?limit=20");
+  },
+
+  /**
+   * Mark a specific notification as read.
+   */
+  markAsRead: async (id: string) => {
+    return api.put(`/notifications/${id}/mark-read`);
+  },
+
+  /**
+   * Mark all notifications as read.
+   */
+  markAllRead: async () => {
+    return api.put("/notifications/mark-all-read");
+  },
 };

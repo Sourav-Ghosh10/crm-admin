@@ -47,11 +47,19 @@ export const holidayService = {
         return result as Holiday;
     },
 
-    delete: async (id: string, isActive: boolean = false): Promise<Record<string, unknown>> => {
-        const response = await api.delete<Record<string, unknown>>(`/holidays/${id}`, {
-            params: { isActive }
+    delete: async (id: string): Promise<Record<string, unknown>> => {
+        const response = await api.patch<Record<string, unknown>>(`/holidays/${id}/status`, {
+            isActive: false
         });
         const result = (response.data?.data || response.data) as Record<string, unknown>;
         return result;
+    },
+
+    toggleStatus: async (id: string, isActive: boolean): Promise<Holiday> => {
+        const response = await api.patch<Record<string, unknown>>(`/holidays/${id}/status`, {
+            isActive
+        });
+        const result = response.data?.data || response.data;
+        return result as Holiday;
     }
 };

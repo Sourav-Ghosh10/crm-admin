@@ -30,6 +30,12 @@ const UserEdit: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [error, setError] = useState<string | string[] | null>(null);
 
+    // Search and Pagination state for managers
+    const [userSearchText, setUserSearchText] = useState("");
+    const [userPage, setUserPage] = useState(1);
+    const [hasMoreUsers, setHasMoreUsers] = useState(true);
+    const [isUsersLoadingMore, setIsUsersLoadingMore] = useState(false);
+
     useEffect(() => {
         const fetchData = async () => {
             if (!id) return;
@@ -40,7 +46,7 @@ const UserEdit: React.FC = () => {
                     locationService.getAll({ limit: 100, isActive: true }),
                     departmentService.getAll({ limit: 100, isActive: true }),
                     designationService.getAll({ limit: 100, isActive: true }),
-                    userService.getAll({ limit: 100 }),
+                    userService.getAll({ limit: 20, isActive: true }),
                     leaveTypeService.getAll({ limit: 100, isActive: true }),
                     roleService.getAll({ limit: 100, isActive: true }),
                 ]);
@@ -51,6 +57,7 @@ const UserEdit: React.FC = () => {
                 setUsers(userRes.users);
                 setLeaveTypes(leaveTypeRes.data);
                 setRoles(roleRes.data);
+                setHasMoreUsers(userRes.page < userRes.totalPages);
             } catch (error) {
                 console.error(error);
             } finally {
@@ -60,6 +67,45 @@ const UserEdit: React.FC = () => {
 
         fetchData();
     }, [id]);
+
+    const handleSearchUsers = React.useCallback(async (search: string) => {
+        const trimmed = search.trim();
+        setUserSearchText(trimmed);
+        setUserPage(1);
+        try {
+            const res = await userService.getAll({ 
+                search: trimmed || undefined, 
+                limit: 20, 
+                isActive: true, 
+                page: 1 
+            });
+            setUsers(res.users);
+            setHasMoreUsers(res.page < res.totalPages);
+        } catch (err) {
+            console.error("Search failed:", err);
+        }
+    }, []);
+
+    const handleLoadMoreUsers = React.useCallback(async () => {
+        if (!hasMoreUsers || isUsersLoadingMore) return;
+        setIsUsersLoadingMore(true);
+        try {
+            const nextPage = userPage + 1;
+            const res = await userService.getAll({ 
+                search: userSearchText || undefined, 
+                limit: 20, 
+                isActive: true, 
+                page: nextPage 
+            });
+            setUsers(prev => [...prev, ...res.users]);
+            setUserPage(nextPage);
+            setHasMoreUsers(res.page < res.totalPages);
+        } catch (err) {
+            console.error("Load more failed:", err);
+        } finally {
+            setIsUsersLoadingMore(false);
+        }
+    }, [hasMoreUsers, isUsersLoadingMore, userPage, userSearchText]);
 
     const handleSave = async (data: Partial<User>) => {
         setSaving(true);
@@ -90,7 +136,7 @@ const UserEdit: React.FC = () => {
         return (
             <div className="text-center py-20">
                 <h2 className="text-2xl font-bold">Employee Not Found</h2>
-                <Button onClick={() => navigate("/users")} className="mt-4">Return to Directory</Button>
+                <Button onClick={() => navigate(-1)} className="mt-4">Return to Directory</Button>
             </div>
         );
     }
@@ -99,7 +145,7 @@ const UserEdit: React.FC = () => {
         <div className="max-w-7xl mx-auto space-y-8 pb-10 animate-in fade-in duration-500">
             <div className="flex items-center justify-between">
                 <div>
-                    <BackButton onClick={() => navigate(`/users/${id}`)} label="Back to Profile" className="mb-4" />
+                    <BackButton label="Back to Profile" className="mb-4" />
                     <div>
                         <h1 className="text-3xl font-black text-foreground">Modify Record</h1>
                         <p className="text-foreground-tertiary font-medium">Updating profile for {user.personalInfo.firstName} {user.personalInfo.lastName}</p>
@@ -123,6 +169,10 @@ const UserEdit: React.FC = () => {
                     users={users}
                     leaveTypes={leaveTypes}
                     error={error}
+                    onSearchUsers={handleSearchUsers}
+                    onLoadMoreUsers={handleLoadMoreUsers}
+                    isUsersLoadingMore={isUsersLoadingMore}
+                    onClearError={() => setError(null)}
                 />
             </div>
         </div>

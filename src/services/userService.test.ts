@@ -1,5 +1,6 @@
 import { userService } from './userService';
 import api from './api';
+import type { User } from '../types/user.types';
 jest.mock('./api', () => ({
     get: jest.fn(),
     post: jest.fn(),
@@ -85,7 +86,7 @@ describe('userService', () => {
                 data: rawResponse
             });
 
-            const result = await userService.create(newUser as any);
+            const result = await userService.create(newUser as unknown as User);
 
             expect(mockedApi.post).toHaveBeenCalledWith('/users', newUser);
             expect(result._id).toBe('new-id');
@@ -101,7 +102,7 @@ describe('userService', () => {
                 data: rawResponse
             });
 
-            const result = await userService.update('123', updateData as any);
+            const result = await userService.update('123', updateData as unknown as User);
 
             expect(mockedApi.put).toHaveBeenCalledWith('/users/123', updateData);
             expect(result.personalInfo.firstName).toBe('Updated');

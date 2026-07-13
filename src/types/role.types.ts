@@ -5,6 +5,7 @@ export interface Role {
     description?: string;
     permissions?: string[];
     isActive: boolean;
+    deletedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
 }

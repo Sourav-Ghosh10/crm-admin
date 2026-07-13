@@ -15,25 +15,41 @@ import { useDebounce } from "../../hooks/useDebounce";
 import UnifiedFilter from "../../components/common/Filter/UnifiedFilter";
 import Pagination from "../../components/common/Pagination";
 import { SearchInput } from "../../components/common/Search/SearchInput";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { format } from "date-fns";
 import Avatar from "../../components/common/Avatar";
+import TimezoneToggle from "../../components/common/TimezoneToggle";
 
 const ReimbursementsList: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
+    
+    // Get filters from URL or defaults
+    const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+    const debouncedSearchTerm = useDebounce(searchTerm, 500);
+    const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "pending");
+    const [typeFilter, setTypeFilter] = useState<string>(searchParams.get("type") || "all");
+    const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
+
     const [reimbursements, setReimbursements] = useState<Reimbursement[]>([]);
     const [loading, setLoading] = useState(true);
     const [isInitialLoading, setIsInitialLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
-    const debouncedSearchTerm = useDebounce(searchTerm, 500);
-    const [statusFilter, setStatusFilter] = useState<string>("all");
-    const [typeFilter, setTypeFilter] = useState<string>("all");
     const [activeTypes, setActiveTypes] = useState<ReimbursementType[]>([]);
 
-    // Pagination
-    const [page, setPage] = useState(1);
+    // Pagination constants
     const [limit] = useState(10);
     const [totalPages, setTotalPages] = useState(0);
+
+    // Sync state to URL
+    useEffect(() => {
+        const params: Record<string, string> = {};
+        if (debouncedSearchTerm) params.search = debouncedSearchTerm;
+        if (statusFilter !== "pending") params.status = statusFilter;
+        if (typeFilter !== "all") params.type = typeFilter;
+        if (page > 1) params.page = page.toString();
+        
+        setSearchParams(params, { replace: true });
+    }, [debouncedSearchTerm, statusFilter, typeFilter, page, setSearchParams]);
 
     const fetchReimbursements = useCallback(async (currentPage: number) => {
         try {
@@ -41,7 +57,7 @@ const ReimbursementsList: React.FC = () => {
             const response = await reimbursementService.getAll({
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 status: statusFilter === "all" ? undefined : statusFilter,
                 reimbursementType: typeFilter === "all" ? undefined : typeFilter,
             });
@@ -65,9 +81,8 @@ const ReimbursementsList: React.FC = () => {
             }
         };
         fetchTypes();
-        fetchReimbursements(1);
-        setPage(1);
-    }, [fetchReimbursements]);
+        fetchReimbursements(page);
+    }, [fetchReimbursements, page]);
 
     const handlePageChange = (newPage: number) => {
         setPage(newPage);
@@ -204,18 +219,20 @@ const ReimbursementsList: React.FC = () => {
                         Manage and approve employee expense claims.
                     </p>
                 </div>
+                <TimezoneToggle variant="horizontal" />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                <div className="md:col-span-6 lg:col-span-4">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="reimbursements"
                         placeholder="Search by title or employee..."
                     />
                 </div>
 
-                <div className="md:col-span-6 lg:col-span-8 flex flex-wrap gap-2 justify-start md:justify-end">
+                <div className="shrink-0 flex items-center justify-end gap-2">
                     <UnifiedFilter
                         filters={[
                             {

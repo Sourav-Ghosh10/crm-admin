@@ -23,7 +23,7 @@ const HolidayListReport: React.FC = () => {
             const resp = await holidayService.getAll({
                 page,
                 limit: 10,
-                search: searchTerm || undefined
+                search: searchTerm.trim() || undefined
             });
             setRecords(resp.data || []);
             setTotal(resp.total || 0);
@@ -51,35 +51,35 @@ const HolidayListReport: React.FC = () => {
         }
     };
 
-    const columns = [
+    const columns: { _id: string; label: string; format: (value: unknown) => React.ReactNode }[] = [
         {
             _id: "name",
             label: "Holiday Name",
-            format: (val: string) => <span className="font-bold text-sm text-foreground">{val}</span>
+            format: (val: unknown) => <span className="font-bold text-sm text-foreground">{String(val)}</span>
         },
         {
             _id: "date",
             label: "Date",
-            format: (val: string) => (
+            format: (val: unknown) => (
                 <div className="flex items-center gap-2 text-xs font-bold text-foreground-secondary">
                     <Calendar className="w-3.5 h-3.5 text-primary" />
-                    {new Date(val).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    {new Date(String(val)).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
             )
         },
         {
             _id: "type",
             label: "Type",
-            format: (val: string) => (
+            format: (val: unknown) => (
                 <span className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest bg-muted border border-border/50 text-foreground-tertiary">
-                    {val || "Public"}
+                    {String(val) || "Public"}
                 </span>
             )
         },
         {
             _id: "isActive",
             label: "Status",
-            format: (val: boolean) => (
+            format: (val: unknown) => (
                 <span className={`text-[10px] font-black uppercase tracking-widest ${val ? 'text-success' : 'text-error'}`}>
                     {val ? 'Active' : 'Inactive'}
                 </span>
@@ -112,7 +112,12 @@ const HolidayListReport: React.FC = () => {
             <div className="bg-surface rounded-3xl border border-border/40 overflow-hidden relative min-h-[400px]">
                 {loading && <div className="absolute inset-0 bg-surface/50 backdrop-blur-sm z-10 flex items-center justify-center font-black text-primary">SYNCING...</div>}
                 <div className="p-4 border-b border-border/30">
-                    <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Filter holiday name..." />
+                    <SearchInput
+                        value={searchTerm}
+                        onChange={setSearchTerm}
+                        searchKey="holiday-report"
+                        placeholder="Filter holiday name..."
+                    />
                 </div>
                 <Table columns={columns} rows={records} className="border-none" />
             </div>

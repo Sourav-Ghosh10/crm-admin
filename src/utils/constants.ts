@@ -1,4 +1,4 @@
-export const APP_NAME = "Pulse Ops - Admin Portal";
+export const APP_NAME = "CodecIT - Admin Portal";
 export const DATE_FORMAT = "yyyy-MM-dd";
 export const TIME_FORMAT = "HH:mm";
 

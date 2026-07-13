@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { cn } from "../../lib/utils";
 import {
@@ -15,6 +15,8 @@ import {
   MoreVertical,
   CheckCircle2,
   User as UserIcon,
+  WifiOff,
+  History,
 } from "lucide-react";
 import type { User } from "../../types/user.types";
 import Button from "../../components/common/Button";
@@ -23,6 +25,32 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/commo
 import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
 import Avatar from "../../components/common/Avatar";
 import { userService } from "../../services/userService";
+import type { EmployeePresence } from "../../services/userService";
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
+
+// ─── Presence helpers ───────────────────────────────────────────────
+const ONLINE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
+
+const isUserOnline = (lastActiveAt: string | null | undefined): boolean => {
+  if (!lastActiveAt) return false;
+  return new Date(lastActiveAt).getTime() > Date.now() - ONLINE_THRESHOLD_MS;
+};
+
+const getTimeAgo = (dateStr: string | null | undefined): string => {
+  if (!dateStr) return "";
+  const diffMs = Date.now() - new Date(dateStr).getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHrs = Math.floor(diffMin / 60);
+  if (diffHrs < 24) return `${diffHrs} hour${diffHrs > 1 ? "s" : ""} ago`;
+  const diffDays = Math.floor(diffHrs / 24);
+  if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
+  return "long time ago";
+};
+// ────────────────────────────────────────────────────────────────────
 
 const UserProfile: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +58,23 @@ const UserProfile: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [presenceData, setPresenceData] = useState<EmployeePresence | null>(null);
+
+  // Permissions
+  const { hasPermission: canEdit } = usePermissions(PERMISSIONS.EMPLOYEE_EDIT);
+  const { hasPermission: canViewHistory } = usePermissions(PERMISSIONS.VIEW_USER_LOCATION_HISTORY);
+
+  // Fetch presence data for this user
+  const fetchPresence = useCallback(async () => {
+    if (!id) return;
+    try {
+      const allPresence = await userService.getPresence();
+      const match = allPresence.find((p) => p._id === id);
+      if (match) setPresenceData(match);
+    } catch (err) {
+      console.error("Failed to fetch presence:", err);
+    }
+  }, [id]);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -45,7 +90,8 @@ const UserProfile: React.FC = () => {
     };
 
     fetchUser();
-  }, [id]);
+    fetchPresence();
+  }, [id, fetchPresence]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -87,6 +133,16 @@ const UserProfile: React.FC = () => {
     });
   };
 
+  const formatDateOnly = (dateString?: string) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-US", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   const dayMap: Record<string, string> = {
     'Mon': 'Monday',
     'Tue': 'Tuesday',
@@ -100,7 +156,7 @@ const UserProfile: React.FC = () => {
   return (
     <div className="space-y-6 animate-in mt-6 fade-in slide-in-from-bottom-4 duration-500 max-w-7xl mx-auto px-4 lg:px-6">
       <div className="flex justify-between items-center mb-4">
-        <BackButton onClick={() => navigate("/users")} label="Directory" />
+        <BackButton label="Directory" />
       </div>
 
       {/* Dynamic Header Section */}
@@ -131,14 +187,26 @@ const UserProfile: React.FC = () => {
                   className="absolute top-full right-0 mt-2 w-48 bg-surface border border-border rounded-xl shadow-2xl z-30 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Button
-                    variant="ghost"
-                    onClick={() => navigate(`/users/edit/${user._id}`)}
-                    className="w-full h-auto flex items-center gap-3 px-4 py-3 text-sm font-bold text-foreground hover:bg-primary/5 hover:text-primary transition-colors text-left justify-start rounded-none"
-                    startIcon={<Edit className="w-4 h-4" />}
-                  >
-                    Edit Profile
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => navigate(`/users/edit/${user._id}`)}
+                      className="w-full h-auto flex items-center gap-3 px-4 py-3 text-sm font-bold text-foreground hover:bg-primary/5 hover:text-primary transition-colors text-left justify-start rounded-none"
+                      startIcon={<Edit className="w-4 h-4" />}
+                    >
+                      Edit Profile
+                    </Button>
+                  )}
+                  {canViewHistory && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => navigate(`/users/${user._id}/location-history`)}
+                      className="w-full h-auto flex items-center gap-3 px-4 py-3 text-sm font-bold text-foreground hover:bg-primary/5 hover:text-primary transition-colors text-left justify-start rounded-none"
+                      startIcon={<History className="w-4 h-4" />}
+                    >
+                      Login History
+                    </Button>
+                  )}
                   <div className="h-px bg-border/50" />
                   <div className="px-4 py-2 text-[10px] font-black text-foreground-tertiary uppercase tracking-widest bg-muted/30">
                     Account Status
@@ -165,20 +233,32 @@ const UserProfile: React.FC = () => {
                   size="2xl"
                 />
               </div>
-              <div className={cn(
-                "absolute bottom-3 sm:bottom-4 right-3 sm:right-4 w-7 h-7 sm:w-9 sm:h-9 border-4 border-surface rounded-full shadow-lg",
-                user.isActive ? "bg-success" : "bg-error"
-              )} />
+              {(() => {
+                const lastActive = presenceData?.lastActiveAt || user.lastActiveAt;
+                const online = isUserOnline(lastActive);
+                return (
+                  <div className={cn(
+                    "absolute bottom-3 sm:bottom-4 right-3 sm:right-4 w-7 h-7 sm:w-9 sm:h-9 border-4 border-surface rounded-full shadow-lg transition-colors",
+                    online ? "bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" : "bg-gray-400"
+                  )} />
+                );
+              })()}
             </div>
 
             {/* User Info */}
             <div className="flex-1 text-center md:text-left pb-2 sm:pb-4 w-full">
               <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 mb-3 sm:mb-8">
                 <div className="space-y-1">
-                  <h1 className="text-3xl sm:text-4xl lg:text-5xl text-foreground md:text-white tracking-tighter drop-shadow-sm font-black">
+                  <h1 className={cn(
+                    "text-3xl sm:text-4xl lg:text-5xl tracking-tighter drop-shadow-sm font-black transition-colors duration-300",
+                    user.userType === 'CLIENT' ? "text-foreground" : "text-white"
+                  )}>
                     {user.personalInfo.firstName} {user.personalInfo.lastName}
                   </h1>
-                  <p className="text-sm sm:text-base font-bold text-foreground-tertiary md:text-white/80 lowercase tracking-tight">
+                  <p className={cn(
+                    "text-sm sm:text-base font-bold lowercase tracking-tight transition-colors duration-300",
+                    user.userType === 'CLIENT' ? "text-foreground-tertiary" : "text-white/60"
+                  )}>
                     @{user.username}
                   </p>
                 </div>
@@ -194,35 +274,69 @@ const UserProfile: React.FC = () => {
                       GOOGLE LINKED
                     </span>
                   )}
-                  <span className="px-3 py-1.5 rounded-xl bg-success/10 text-success border border-success/20 text-[9px] font-black tracking-widest flex items-center gap-1.5">
+                  <span className={cn(
+                    "px-3 py-1.5 rounded-xl border text-[9px] font-black tracking-widest flex items-center gap-1.5 transition-all duration-300",
+                    user.userType === 'CLIENT' 
+                      ? "bg-success/10 text-success border-success/20" 
+                      : "bg-white/15 text-white border-white/30 backdrop-blur-md"
+                  )}>
                     <CheckCircle2 className="w-3 h-3" />
                     {user.isActive ? "ACTIVE" : "INACTIVE"}
                   </span>
+                  {(() => {
+                    const lastActive = presenceData?.lastActiveAt || user.lastActiveAt;
+                    const online = isUserOnline(lastActive);
+                    return (
+                      <span className={cn(
+                        "px-3 py-1.5 rounded-xl text-[9px] font-black tracking-widest flex items-center gap-1.5 border transition-all duration-300",
+                        online
+                          ? (user.userType === 'CLIENT' ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" : "bg-emerald-400/20 text-white border-emerald-400/30 backdrop-blur-md")
+                          : (user.userType === 'CLIENT' ? "bg-gray-100 text-gray-500 border-gray-200" : "bg-white/10 text-white/70 border-white/20 backdrop-blur-md")
+                      )}>
+                        {online ? (
+                          <>
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                            </span>
+                            ONLINE
+                          </>
+                        ) : (
+                          <>
+                            <WifiOff className="w-3 h-3" />
+                            {lastActive ? `SEEN ${getTimeAgo(lastActive).toUpperCase()}` : "OFFLINE"}
+                          </>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
 
-              {/* Job Details */}
-              <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 sm:gap-8 bg-muted/10 md:bg-white/10 md:backdrop-blur-sm p-4 rounded-2xl border border-white/10">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
-                    <Briefcase className="w-5 h-5" />
+              {/* Job Details - Hide for Client Users */}
+              {user.userType !== 'CLIENT' && (
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 sm:gap-8 bg-muted/10 md:bg-white/10 md:backdrop-blur-sm p-4 rounded-2xl border border-white/10 mt-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary">
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground-tertiary/80">Designation</p>
+                      <p className="text-sm sm:text-base font-black text-foreground leading-tight">{user.employment?.designation || 'N/A'}</p>
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-foreground-tertiary/80">Designation</p>
-                    <p className="text-sm sm:text-base font-black text-foreground leading-tight">{user.employment.designation}</p>
+                  <div className="w-px h-8 bg-border/20 hidden md:block" />
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+                      <Building className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-foreground-tertiary/80">Department</p>
+                      <p className="text-sm sm:text-base font-black text-foreground leading-tight">{user.employment?.department || 'N/A'}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="w-px h-8 bg-border/20 hidden md:block" />
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
-                    <Building className="w-5 h-5" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-foreground-tertiary/80">Department</p>
-                    <p className="text-sm sm:text-base font-black text-foreground leading-tight">{user.employment.department}</p>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -260,6 +374,21 @@ const UserProfile: React.FC = () => {
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="font-bold text-foreground-tertiary uppercase">Last Login</span>
                   <span className="font-medium">{formatDate(user.lastLogin)}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="font-bold text-foreground-tertiary uppercase">Last Active</span>
+                  {(() => {
+                    const lastActive = presenceData?.lastActiveAt || user.lastActiveAt;
+                    const online = isUserOnline(lastActive);
+                    return online ? (
+                      <span className="font-bold text-emerald-600 flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Online now
+                      </span>
+                    ) : (
+                      <span className="font-medium">{lastActive ? getTimeAgo(lastActive) : "N/A"}</span>
+                    );
+                  })()}
                 </div>
                 <div className="flex items-center justify-between text-[11px]">
                   <span className="font-bold text-foreground-tertiary uppercase">Password Alteration</span>
@@ -336,119 +465,133 @@ const UserProfile: React.FC = () => {
 
         {/* Right Column - Career & Personal */}
         <div className="lg:col-span-8 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-            {/* Employment Card */}
-            <Card variant="bordered" className="md:col-span-3 rounded-[2.5rem] border-border/50 shadow-md overflow-hidden bg-surface">
-              <CardHeader className="flex flex-row items-center gap-3 border-b border-border/50 bg-muted/30">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                  <Briefcase className="w-5 h-5" />
-                </div>
-                <CardTitle className="text-lg font-black tracking-tight">Employment Journey</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  <div>
-                    <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Join Date</label>
-                    <p className="text-sm font-bold text-foreground">{formatDate(user.employment.dateOfJoining).split(',')[0]}</p>
+          {user.userType !== 'CLIENT' && (
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+              {/* Employment Card */}
+              <Card variant="bordered" className="md:col-span-3 rounded-[2.5rem] border-border/50 shadow-md overflow-hidden bg-surface">
+                <CardHeader className="flex flex-row items-center gap-3 border-b border-border/50 bg-muted/30">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Briefcase className="w-5 h-5" />
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Work Type</label>
-                    <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black uppercase">{user.employment.employmentType}</span>
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Office Hub</label>
-                    <div className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-                      <MapPin className="w-3.5 h-3.5 text-primary" />
-                      {user.employment.location}
+                  <CardTitle className="text-lg font-black tracking-tight">Employment Journey</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Join Date</label>
+                      <p className="text-sm font-bold text-foreground">{formatDateOnly(user.employment?.dateOfJoining)}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">UAN No</label>
+                      <p className="text-sm font-bold text-foreground">{user.employment?.uanNumber || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">ESI No</label>
+                      <p className="text-sm font-bold text-foreground">{user.employment?.esiNumber || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Bank Name</label>
+                      <p className="text-sm font-bold text-foreground">{user.employment?.bankName || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Bank A/C No</label>
+                      <p className="text-sm font-bold text-foreground font-mono">{user.employment?.bankAccountNo || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Work Type</label>
+                      <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black uppercase">{user.employment?.employmentType || 'N/A'}</span>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Office Hub</label>
+                      <div className="flex items-center gap-1.5 text-sm font-bold text-foreground">
+                        <MapPin className="w-3.5 h-3.5 text-primary" />
+                        {user.employment?.location || 'N/A'}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Reporting Manager</label>
+                      <div className="flex items-center gap-2 text-sm font-bold text-foreground">
+                        {typeof user.employment?.reportingManager === 'object' && user.employment?.reportingManager ? (
+                          <>
+                            <Avatar
+                              src={user.employment.reportingManager.personalInfo?.profilePicture}
+                              firstName={user.employment.reportingManager.personalInfo?.firstName}
+                              lastName={user.employment.reportingManager.personalInfo?.lastName}
+                              size="xs"
+                            />
+                            {user.employment.reportingManager.personalInfo?.firstName} {user.employment.reportingManager.personalInfo?.lastName}
+                          </>
+                        ) : (
+                          <div className="flex items-center gap-1.5 font-bold text-foreground-tertiary">
+                            <UserIcon className="w-3.5 h-3.5" />
+                            N/A
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Reporting Manager</label>
-                    <div className="flex items-center gap-2 text-sm font-bold text-foreground">
-                      {typeof user.employment.reportingManager === 'object' && user.employment.reportingManager ? (
-                        <>
-                          <Avatar
-                            src={user.employment.reportingManager.personalInfo.profilePicture}
-                            firstName={user.employment.reportingManager.personalInfo.firstName}
-                            lastName={user.employment.reportingManager.personalInfo.lastName}
-                            size="xs"
-                          />
-                          {user.employment.reportingManager.personalInfo.firstName} {user.employment.reportingManager.personalInfo.lastName}
-                        </>
-                      ) : (
-                        <div className="flex items-center gap-1.5 font-bold text-foreground-tertiary">
-                          <UserIcon className="w-3.5 h-3.5" />
-                          N/A
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
 
-                <div className="p-4 rounded-[2rem] bg-muted/30 border border-border/50">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-4 h-4 text-primary" />
-                      <span className="text-xs font-black uppercase tracking-widest text-foreground-tertiary">Operational Window</span>
+                  <div className="p-4 rounded-[2rem] bg-muted/30 border border-border/50">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-primary" />
+                        <span className="text-xs font-black uppercase tracking-widest text-foreground-tertiary">Operational Window</span>
+                      </div>
+                      <span className="text-sm font-black text-primary">
+                        {user.employment?.workingHours?.startTime || 'N/A'} — {user.employment?.workingHours?.endTime || 'N/A'}
+                      </span>
                     </div>
-                    <span className="text-sm font-black text-primary">
-                      {user.employment.workingHours?.startTime} — {user.employment.workingHours?.endTime}
-                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.keys(dayMap).map(dayKey => {
+                        const isOff = user.employment?.workingHours?.weeklyOff?.some(offDay =>
+                          offDay === dayKey || offDay === dayMap[dayKey]
+                        );
+                        return (
+                          <span key={dayKey} className={cn(
+                            "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border transition-all",
+                            isOff
+                              ? "bg-error/5 border-error/20 text-error/60"
+                              : "bg-success/5 border-success/20 text-success"
+                          )}>
+                            {dayKey}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.keys(dayMap).map(dayKey => {
-                      const isOff = user.employment.workingHours?.weeklyOff?.some(offDay =>
-                        offDay === dayKey || offDay === dayMap[dayKey]
-                      );
-                      return (
-                        <span key={dayKey} className={cn(
-                          "px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border transition-all",
-                          isOff
-                            ? "bg-error/5 border-error/20 text-error/60"
-                            : "bg-success/5 border-success/20 text-success"
-                        )}>
-                          {dayKey}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            {/* Privileges Card */}
-            <Card variant="bordered" className="md:col-span-2 rounded-[2.5rem] border-border/50 shadow-md bg-surface h-full">
-              <CardHeader className="flex flex-row items-center gap-3 border-b border-border/50 bg-muted/30">
-                <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <CardTitle className="text-lg font-black tracking-tight">Privileges</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-6">
-                <div className="space-y-2">
-                  {[
-                    { key: 'canApproveLeave', label: 'Absence Approval', isRoot: false },
-                    { key: 'canApproveReimbursement', label: 'Financial Approval', isRoot: false },
-                    { key: 'canManageSchedule', label: 'Schedule Management', isRoot: false },
-                    { key: 'canViewReports', label: 'View Reports', isRoot: false }
-                  ].map((perm) => (
-                    <div key={perm.key} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 group hover:bg-muted transition-all">
-                      <span className="text-xs font-bold text-foreground-tertiary group-hover:text-foreground transition-colors">{perm.label}</span>
-                      {perm.isRoot ? (
-                        (user as any)[perm.key] ?
-                          <CheckCircle2 className="w-5 h-5 text-success animate-in zoom-in duration-300" /> :
+              {/* Privileges Card */}
+              <Card variant="bordered" className="md:col-span-2 rounded-[2.5rem] border-border/50 shadow-md bg-surface h-full">
+                <CardHeader className="flex flex-row items-center gap-3 border-b border-border/50 bg-muted/30">
+                  <div className="w-10 h-10 rounded-xl bg-accent/10 flex items-center justify-center text-accent">
+                    <Shield className="w-5 h-5" />
+                  </div>
+                  <CardTitle className="text-lg font-black tracking-tight">Privileges</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    {[
+                      { key: 'canApproveLeave', label: 'Absence Approval' },
+                      { key: 'canApproveReimbursement', label: 'Financial Approval' },
+                      { key: 'canManageSchedule', label: 'Schedule Management' },
+                      { key: 'canViewReports', label: 'View Reports' }
+                    ].map((perm) => (
+                      <div key={perm.key} className="flex items-center justify-between p-3 rounded-2xl bg-muted/30 group hover:bg-muted transition-all">
+                        <span className="text-xs font-bold text-foreground-tertiary group-hover:text-foreground transition-colors">{perm.label}</span>
+                        {user.permissions?.[perm.key as keyof User['permissions']] ? (
+                          <CheckCircle2 className="w-5 h-5 text-success animate-in zoom-in duration-300" />
+                        ) : (
                           <div className="w-5 h-5 rounded-full border-2 border-border/50" />
-                      ) : (
-                        (user.permissions as unknown as Record<string, boolean>)[perm.key] ?
-                          <CheckCircle2 className="w-5 h-5 text-success animate-in zoom-in duration-300" /> :
-                          <div className="w-5 h-5 rounded-full border-2 border-border/50" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
 
           {/* Entitlement & Personal Detail */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -505,7 +648,7 @@ const UserProfile: React.FC = () => {
                     <div className="flex justify-between items-center">
                       <div>
                         <p className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest mb-1">Date of Birth</p>
-                        <p className="text-sm font-bold text-foreground">{formatDate(user.personalInfo.dateOfBirth).split(',')[0]}</p>
+                        <p className="text-sm font-bold text-foreground">{formatDateOnly(user.personalInfo?.dateOfBirth)}</p>
                       </div>
                     </div>
                   </div>

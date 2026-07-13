@@ -47,11 +47,19 @@ export const locationService = {
         return result as OfficeLocation;
     },
 
-    delete: async (id: string, isActive: boolean = false): Promise<Record<string, unknown>> => {
-        const response = await api.delete<Record<string, unknown>>(`/office-locations/${id}`, {
-            params: { isActive }
+    delete: async (id: string): Promise<Record<string, unknown>> => {
+        const response = await api.patch<Record<string, unknown>>(`/office-locations/${id}/status`, {
+            isActive: false
         });
         const result = (response.data?.data || response.data) as Record<string, unknown>;
         return result;
+    },
+
+    toggleStatus: async (id: string, isActive: boolean): Promise<OfficeLocation> => {
+        const response = await api.patch<Record<string, unknown>>(`/office-locations/${id}/status`, {
+            isActive
+        });
+        const result = response.data?.data || response.data;
+        return result as OfficeLocation;
     }
 };

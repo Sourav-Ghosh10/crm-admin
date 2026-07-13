@@ -89,10 +89,10 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                     return (
                         <div
                             key={day.toString()}
-                            onClick={() => onDateClick(day)}
+                            onClick={() => (!holidayName || daySummary.total > 0) && onDateClick(day)}
                             className={cn(
-                                "min-h-[70px] sm:min-h-[100px] p-1.5 sm:p-3 border-r border-b border-border/40 transition-all cursor-pointer group relative overflow-hidden",
-                                "hover:bg-primary/5 hover:border-primary/20 hover:z-10",
+                                "min-h-[70px] sm:min-h-[100px] p-1.5 sm:p-3 border-r border-b border-border/40 transition-all group relative overflow-hidden",
+                                (holidayName && daySummary.total === 0) ? "cursor-default opacity-80" : "cursor-pointer hover:bg-primary/5 hover:border-primary/20 hover:z-10",
                                 isTodayDate && "bg-primary/[0.02]",
                                 viewMode === 'month' && !isCurrentMonth && "bg-muted/10 opacity-30",
                                 (idx + 1) % 7 === 0 && "border-r-0",
@@ -101,7 +101,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                         >
                             <div className="flex justify-between items-start mb-2">
                                 <span className={cn(
-                                    "text-xs sm:text-sm font-bold w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center rounded-full transition-all",
+                                    "text-xs sm:text-sm font-bold w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center rounded-full transition-all shrink-0",
                                     isTodayDate
                                         ? "bg-primary text-white shadow-lg shadow-primary/30 ring-2 ring-primary/20"
                                         : "text-foreground-secondary group-hover:text-primary group-hover:bg-primary/10"
@@ -109,9 +109,9 @@ const CalendarView: React.FC<CalendarViewProps> = ({
                                     {format(day, 'd')}
                                 </span>
                                 {holidayName && (
-                                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 shadow-sm animate-in fade-in zoom-in duration-300">
-                                        <Gift className="w-2.5 h-2.5 text-amber-600" />
-                                        <span className="text-[9px] font-black text-amber-700 uppercase tracking-tighter hidden sm:inline">{holidayName}</span>
+                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 shadow-sm animate-in fade-in zoom-in duration-300 max-w-[calc(100%-44px)] overflow-hidden">
+                                        <Gift className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                        <span className="text-[9px] font-black text-amber-700 uppercase tracking-tighter hidden sm:inline truncate" title={holidayName}>{holidayName}</span>
                                     </div>
                                 )}
                             </div>

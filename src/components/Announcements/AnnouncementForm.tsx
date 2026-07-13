@@ -33,8 +33,8 @@ interface AnnouncementFormProps {
 }
 
 const schema = yup.object({
-    title: yup.string().required("Title is required").trim(),
-    content: yup.string().required("Content is required").trim(),
+    title: yup.string().required("Title is required").trim().max(150, "Title cannot exceed 150 characters"),
+    content: yup.string().required("Content is required").trim().max(2000, "Content cannot exceed 2000 characters"),
     priority: yup.string().oneOf(['low', 'medium', 'high', 'critical']).required("Priority is required"),
     category: yup.string().oneOf(['general', 'policy', 'event', 'holiday', 'other', 'alert']).required("Category is required"),
     acknowledgmentRequired: yup.boolean().default(false),
@@ -183,13 +183,13 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                 control={control}
                                 render={({ field }) => (
                                     <FormSelect
+                                        {...field}
                                         label="Priority"
-                                        value={field.value}
-                                        onChange={field.onChange}
+                                        required
                                         options={priorityOptions}
                                         error={!!errors.priority}
                                         helperText={errors.priority?.message}
-                                        startIcon={<AlertTriangle className="w-4 h-4 text-warning" />}
+                                        startIcon={<AlertTriangle className="w-4 h-4" />}
                                     />
                                 )}
                             />
@@ -199,20 +199,20 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                 control={control}
                                 render={({ field }) => (
                                     <FormSelect
+                                        {...field}
                                         label="Category"
-                                        value={field.value}
-                                        onChange={field.onChange}
+                                        required
                                         options={categoryOptions}
                                         error={!!errors.category}
                                         helperText={errors.category?.message}
-                                        startIcon={<Tag className="w-4 h-4 text-info" />}
+                                        startIcon={<Tag className="w-4 h-4" />}
                                     />
                                 )}
                             />
                         </div>
 
-                        <div className="space-y-3 pt-4 border-t border-border/20">
-                            <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-4 pt-4 border-t border-border/20">
+                            <div className="grid grid-cols-2 gap-3 items-start">
                                 <Controller
                                     name="publishDate"
                                     control={control}
@@ -221,9 +221,10 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                             {...field}
                                             type="date"
                                             label="Start Date"
+                                            required
                                             error={!!errors.publishDate}
                                             helperText={errors.publishDate?.message}
-                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs"
+                                            className="bg-primary/5 focus:bg-white h-[42px] px-3.5"
                                         />
                                     )}
                                 />
@@ -237,13 +238,13 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                             label="Start Time"
                                             error={!!errors.publishTime}
                                             helperText={errors.publishTime?.message}
-                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs"
+                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs h-[42px] px-3.5"
                                         />
                                     )}
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-2 gap-3 items-start">
                                 <Controller
                                     name="expiryDate"
                                     control={control}
@@ -252,9 +253,10 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                             {...field}
                                             type="date"
                                             label="End Date"
+                                            required
                                             error={!!errors.expiryDate}
                                             helperText={errors.expiryDate?.message}
-                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs"
+                                            className="bg-primary/5 focus:bg-white h-[42px] px-3.5"
                                         />
                                     )}
                                 />
@@ -265,11 +267,11 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                                         <Input
                                             {...field}
                                             type="time"
-                                            label="Deadline"
+                                            label="End Time"
                                             placeholder="HH:mm"
                                             error={!!errors.deadlineTime}
                                             helperText={errors.deadlineTime?.message}
-                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs"
+                                            className="bg-surface/30 border-border/40 focus:border-primary/40 focus:ring-4 focus:ring-primary/5 transition-all text-xs h-[42px] px-3.5"
                                         />
                                     )}
                                 />
@@ -325,11 +327,14 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                             render={({ field }) => (
                                 <Input
                                     {...field}
-                                    label="Title"
-                                    placeholder="Enter a descriptive title"
+                                    label="Announcement Title"
+                                    required
+                                    placeholder="e.g. Quarterly Team Sync Up"
                                     error={!!errors.title}
                                     helperText={errors.title?.message}
-                                    className="bg-surface/30 border-border/40 focus:border-primary/50 focus:ring-4 focus:ring-primary/5 text-base font-semibold tracking-tight transition-all"
+                                    startAdornment={<Megaphone className="w-4 h-4" />}
+                                    className="bg-primary/5 focus:bg-white"
+                                    maxLength={150}
                                 />
                             )}
                         />
@@ -340,11 +345,13 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                             render={({ field }) => (
                                 <TextArea
                                     {...field}
-                                    label="Message"
-                                    placeholder="Write your announcement message here..."
+                                    label="Content"
+                                    required
+                                    rows={6}
+                                    placeholder="Detail the announcement messaging..."
                                     error={!!errors.content}
                                     helperText={errors.content?.message}
-                                    className="bg-surface/30 border-border/40 focus:border-primary/50 focus:ring-4 focus:ring-primary/5 h-[240px] resize-none transition-all leading-relaxed"
+                                    maxLength={2000}
                                 />
                             )}
                         />
@@ -365,20 +372,18 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                             name="targetAudience.departments"
                             control={control}
                             render={({ field }) => (
-                                <div className="space-y-1.5 px-0.5">
-                                    <label className="block text-[10px] font-black text-foreground-tertiary/70 uppercase tracking-widest px-1">
-                                        Departments
-                                    </label>
-                                    <MultiSelectSearch
-                                        options={departmentOptions}
-                                        selectedValues={field.value || []}
-                                        onSelectionChange={(vals) => field.onChange(vals)}
-                                        placeholder="All Departments"
-                                        isLoading={isLoadingOptions}
-                                        allowAll={true}
-                                        allowSearch={true}
-                                    />
-                                </div>
+                                <MultiSelectSearch
+                                    label="Departments"
+                                    options={departmentOptions}
+                                    selectedValues={field.value || []}
+                                    onSelectionChange={(vals) => field.onChange(vals)}
+                                    placeholder="All Departments"
+                                    isLoading={isLoadingOptions}
+                                    allowAll={true}
+                                    allowSearch={true}
+                                    error={!!errors.targetAudience?.departments}
+                                    helperText={errors.targetAudience?.departments?.message}
+                                />
                             )}
                         />
 
@@ -386,20 +391,18 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                             name="targetAudience.locations"
                             control={control}
                             render={({ field }) => (
-                                <div className="space-y-1.5 px-0.5">
-                                    <label className="block text-[10px) font-black text-foreground-tertiary/70 uppercase tracking-widest px-1">
-                                        Locations
-                                    </label>
-                                    <MultiSelectSearch
-                                        options={locationOptions}
-                                        selectedValues={field.value || []}
-                                        onSelectionChange={(vals) => field.onChange(vals)}
-                                        placeholder="All Locations"
-                                        isLoading={isLoadingOptions}
-                                        allowAll={true}
-                                        allowSearch={true}
-                                    />
-                                </div>
+                                <MultiSelectSearch
+                                    label="Locations"
+                                    options={locationOptions}
+                                    selectedValues={field.value || []}
+                                    onSelectionChange={(vals) => field.onChange(vals)}
+                                    placeholder="All Locations"
+                                    isLoading={isLoadingOptions}
+                                    allowAll={true}
+                                    allowSearch={true}
+                                    error={!!errors.targetAudience?.locations}
+                                    helperText={errors.targetAudience?.locations?.message}
+                                />
                             )}
                         />
 
@@ -407,19 +410,17 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                             name="targetAudience.roles"
                             control={control}
                             render={({ field }) => (
-                                <div className="space-y-1.5 px-0.5">
-                                    <label className="block text-[10px] font-black text-foreground-tertiary/70 uppercase tracking-widest px-1">
-                                        Roles
-                                    </label>
-                                    <MultiSelectSearch
-                                        options={roleOptions}
-                                        selectedValues={field.value || []}
-                                        onSelectionChange={(vals) => field.onChange(vals)}
-                                        placeholder="All Roles"
-                                        allowAll={true}
-                                        allowSearch={true}
-                                    />
-                                </div>
+                                <MultiSelectSearch
+                                    label="Roles"
+                                    options={roleOptions}
+                                    selectedValues={field.value || []}
+                                    onSelectionChange={(vals) => field.onChange(vals)}
+                                    placeholder="All Roles"
+                                    allowAll={true}
+                                    allowSearch={true}
+                                    error={!!errors.targetAudience?.roles}
+                                    helperText={errors.targetAudience?.roles?.message}
+                                />
                             )}
                         />
 
@@ -470,7 +471,7 @@ const AnnouncementForm: React.FC<AnnouncementFormProps> = ({
                     {isEditMode ? "Update Announcement" : "Publish Announcement"}
                 </Button>
             </div>
-        </form>
+        </form >
     );
 };
 

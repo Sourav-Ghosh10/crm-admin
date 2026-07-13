@@ -10,7 +10,7 @@ describe("EmployeeListPanel Component", () => {
             total: 0,
             totalPages: 1,
             page: 1,
-            limit: 10
+            limit: 6
         });
     });
 

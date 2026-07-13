@@ -5,6 +5,8 @@ import { announcementService } from "../../services/announcementService";
 import { departmentService } from "../../services/departmentService";
 import { locationService } from "../../services/locationService";
 import { jest } from "@jest/globals";
+import type { Announcement } from "../../types/announcement.types";
+import type { Department, OfficeLocation, PaginatedResponse } from "../../types/organization.types";
 
 jest.mock("../../services/announcementService");
 jest.mock("../../services/departmentService");
@@ -12,9 +14,9 @@ jest.mock("../../services/locationService");
 
 describe("AnnouncementFormPage", () => {
     beforeEach(() => {
-        (announcementService.getById as any).mockResolvedValue({ data: {} });
-        (departmentService.getAll as any).mockResolvedValue({ data: [] });
-        (locationService.getAll as any).mockResolvedValue({ data: [] });
+        jest.mocked(announcementService.getById).mockResolvedValue({ success: true, data: {} as Announcement });
+        jest.mocked(departmentService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Department>);
+        jest.mocked(locationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<OfficeLocation>);
     });
 
     it("renders create mode correctly", async () => {
@@ -38,8 +40,8 @@ describe("AnnouncementFormPage", () => {
             content: "Content",
             priority: "medium",
             type: "info"
-        };
-        (announcementService.getById as any).mockResolvedValue({ data: mockAnnouncement });
+        } as unknown as Announcement;
+        jest.mocked(announcementService.getById).mockResolvedValue({ success: true, data: mockAnnouncement });
 
         render(
             <MemoryRouter initialEntries={["/announcements/123/edit"]}>

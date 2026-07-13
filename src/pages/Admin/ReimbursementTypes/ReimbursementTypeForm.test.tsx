@@ -50,7 +50,7 @@ describe("ReimbursementTypeForm Component", () => {
 
         await waitFor(() => {
             expect(mockOnSubmit).toHaveBeenCalled();
-            const callArgs = mockOnSubmit.mock.calls[0][0] as any;
+            const callArgs = (mockOnSubmit.mock.calls[0][0] || {}) as Record<string, unknown>;
             expect(callArgs.name).toBe("Meals");
             expect(callArgs.maxAmount).toBe(100);
         });

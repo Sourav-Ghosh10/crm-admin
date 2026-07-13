@@ -48,11 +48,11 @@ export const roleService = {
         return result as Role;
     },
 
-    delete: async (id: string, isActive: boolean = false): Promise<Record<string, unknown>> => {
-        const response = await api.delete<Record<string, unknown>>(`/roles/${id}`, {
-            params: { isActive }
+    toggleStatus: async (id: string, isActive: boolean): Promise<Role> => {
+        const response = await api.patch<Record<string, unknown>>(`/roles/${id}/status`, {
+            isActive
         });
-        const result = (response.data?.data || response.data) as Record<string, unknown>;
-        return result;
+        const result = response.data?.data || response.data;
+        return result as Role;
     }
 };

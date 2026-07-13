@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useContext, useState } from "react";
+import React, { useEffect, useContext, useState } from "react";
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
@@ -25,7 +25,7 @@ export const ModalFooter: React.FC<{ children: ReactNode; className?: string }> 
   if (!footerRef) return null;
 
   return createPortal(
-    <div className={cn("flex items-center justify-end gap-3 w-full", className)}>
+    <div className={cn("flex items-center justify-between w-full", className)}>
       {children}
     </div>,
     footerRef
@@ -39,6 +39,8 @@ interface ModalProps {
   children: ReactNode;
   actions?: ReactNode;
   maxWidth?: "xs" | "sm" | "md" | "lg" | "xl";
+  preventCloseOnClickOutside?: boolean;
+  hideHeader?: boolean;
 }
 
 const maxWidthClasses = {
@@ -57,45 +59,38 @@ const Modal: React.FC<ModalProps> = ({
   children,
   actions,
   maxWidth = "sm",
+  preventCloseOnClickOutside = true,
+  hideHeader = false,
 }) => {
   const [footerElement, setFooterElement] = useState<HTMLDivElement | null>(null);
 
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    },
-    [onClose],
-  );
-
   useEffect(() => {
     if (open) {
-      document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
     }
     return () => {
-      document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "unset";
     };
-  }, [open, handleEscape]);
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <ModalContext.Provider value={{ footerRef: footerElement }}>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
         {/* Backdrop */}
         <div
-          className="absolute inset-0 bg-slate-900/60 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
-          onClick={onClose}
+          className="absolute inset-0 bg-slate-900/40 backdrop-blur-md transition-opacity duration-300 animate-in fade-in"
           aria-hidden="true"
+          onClick={() => {
+            if (!preventCloseOnClickOutside) onClose();
+          }}
         />
 
         {/* Modal content */}
         <div
           className={cn(
-            "relative bg-surface rounded-3xl shadow-2xl w-full mx-auto border border-white/20 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 z-10 overflow-hidden flex flex-col",
+            "relative bg-surface rounded-[2.5rem] shadow-2xl w-full mx-auto border border-white/20 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 z-10 overflow-hidden flex flex-col",
             maxWidthClasses[maxWidth],
           )}
           role="dialog"
@@ -104,26 +99,28 @@ const Modal: React.FC<ModalProps> = ({
         >
 
           {/* Header */}
-          <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-5 border-b border-border bg-muted/30">
-            <h2
-              id="modal-title"
-              className="text-base sm:text-lg lg:text-xl font-bold text-foreground tracking-tight pr-2"
-            >
-              {title}
-            </h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="p-1.5 sm:p-2 rounded-xl text-foreground-secondary hover:text-foreground hover:bg-muted transition-all duration-200 flex-shrink-0 h-auto w-auto"
-              aria-label="Close modal"
-            >
-              <X className="w-4 h-4 sm:w-5 sm:h-5" />
-            </Button>
-          </div>
+          {!hideHeader && (
+            <div className="flex items-center justify-between px-6 py-5 border-b border-border/50 bg-muted/20">
+              <h2
+                id="modal-title"
+                className="text-lg sm:text-xl font-black text-foreground uppercase tracking-tight pr-2"
+              >
+                {title}
+              </h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="p-2 rounded-2xl text-foreground-secondary hover:text-error hover:bg-error/10 transition-all duration-300 flex-shrink-0"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          )}
 
           {/* Body */}
-          <div className="p-4 sm:p-6 overflow-y-auto custom-scrollbar max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-180px)]">
+          <div className="p-6 sm:p-8 overflow-y-auto custom-scrollbar max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-180px)]">
             {children}
           </div>
 
@@ -131,7 +128,7 @@ const Modal: React.FC<ModalProps> = ({
           <div
             ref={setFooterElement}
             className={cn(
-              "flex items-center justify-end gap-3 px-6 py-4 border-t border-border bg-muted/30 empty:hidden",
+              "flex items-center justify-between px-8 py-6 border-t border-border/50 bg-muted/20 empty:hidden transition-all duration-300",
               !actions && "empty:hidden"
             )}
           >

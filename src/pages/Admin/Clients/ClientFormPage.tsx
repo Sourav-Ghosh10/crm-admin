@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import ClientCreationWizard from "./ClientCreationWizard";
 import { clientService } from "../../../services/clientService";
-import type { Client } from "../../../types/client.types";
+import type { Client, CreateClientRequest, UpdateClientRequest } from "../../../types/client.types";
 import { getErrorMessage } from "../../../utils/errorHandling";
 
 const ClientFormPage: React.FC = () => {
@@ -10,6 +10,7 @@ const ClientFormPage: React.FC = () => {
     const navigate = useNavigate();
     const [client, setClient] = useState<Partial<Client> | null>(null);
     const [loading, setLoading] = useState(!!id);
+    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -30,17 +31,23 @@ const ClientFormPage: React.FC = () => {
         fetchClient();
     }, [id]);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleFormSubmit = async (data: any) => {
+        const payload = data as CreateClientRequest;
         try {
+            setIsSaving(true);
+            setError(null);
             if (id) {
-                await clientService.update({ id, ...data });
+                await clientService.update({ ...payload, id } as UpdateClientRequest);
             } else {
-                await clientService.create(data);
+                await clientService.create(payload);
             }
             navigate("/clients");
         } catch (err) {
             const msg = getErrorMessage(err, "Failed to save client");
             setError(Array.isArray(msg) ? msg.join(", ") : msg);
+        } finally {
+            setIsSaving(false);
         }
     };
 
@@ -75,7 +82,9 @@ const ClientFormPage: React.FC = () => {
                     initialValues={client || { is_active: true }}
                     onSubmit={handleFormSubmit}
                     onCancel={() => navigate("/clients")}
+                    isLoading={isSaving}
                     error={error}
+                    onClearError={() => setError(null)}
                 />
             </div>
         </div>

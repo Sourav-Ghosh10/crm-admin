@@ -106,10 +106,10 @@ const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                     return (
                         <div
                             key={day.toString()}
-                            onClick={() => onDateClick(day)}
+                            onClick={() => (!holidayName || !!shift) && onDateClick(day)}
                             className={cn(
-                                "min-h-[100px] p-3 border-r border-b border-border/40 transition-all cursor-pointer group relative",
-                                "hover:bg-primary/[0.02] hover:z-10",
+                                "min-h-[100px] p-3 border-r border-b border-border/40 transition-all group relative",
+                                (holidayName && !shift) ? "cursor-default opacity-80" : "cursor-pointer hover:bg-primary/[0.02] hover:z-10",
                                 isTodayDate && "bg-primary/[0.01]",
                                 viewMode === 'month' && !isCurrentMonth && "bg-muted/10 opacity-30",
                                 (idx + 1) % 7 === 0 && "border-r-0",
@@ -127,9 +127,9 @@ const EmployeeCalendarView: React.FC<EmployeeCalendarViewProps> = ({
                                 </span>
 
                                 {holidayName && (
-                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-                                        <Gift className="w-2.5 h-2.5 text-amber-600" />
-                                        <span className="text-[8px] font-black text-amber-700 uppercase">{holidayName}</span>
+                                    <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 max-w-[calc(100%-32px)] overflow-hidden">
+                                        <Gift className="w-2.5 h-2.5 text-amber-600 shrink-0" />
+                                        <span className="text-[8px] font-black text-amber-700 uppercase truncate" title={holidayName}>{holidayName}</span>
                                     </div>
                                 )}
                             </div>

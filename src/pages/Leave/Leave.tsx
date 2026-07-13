@@ -8,6 +8,7 @@ import {
 import { cn } from "../../lib/utils";
 import Button from "../../components/common/Button";
 import { SearchInput } from "../../components/common/Search/SearchInput";
+import TextArea from "../../components/common/Input/TextArea";
 import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
 import Table from "../../components/common/Table/Table";
 import { leaveService, type PaginatedLeaveResponse } from "../../services/leaveService";
@@ -20,14 +21,24 @@ import Pagination from "../../components/common/Pagination";
 import FilterDropdown from "../../components/common/Filter/FilterDropdown";
 import StatCard from "../../components/common/Stats/StatCard";
 import { useAppSelector } from "../../store/hooks";
+import TimezoneToggle from "../../components/common/TimezoneToggle";
+
+import { useSearchParams } from "react-router-dom";
 
 const Leave: React.FC = () => {
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Get filters from URL or defaults
+    const [statusFilter, setStatusFilter] = useState<LeaveStatus | 'all'>((searchParams.get("status") as LeaveStatus | 'all') || 'pending');
+    const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+    const debouncedSearch = useDebounce(searchTerm, 500);
+
+    // Initial page from URL
+    const initialPage = Number(searchParams.get("page")) || 1;
+
     const [requests, setRequests] = useState<LeaveRequest[]>([]);
     const [initialLoading, setInitialLoading] = useState(true);
     const [tableLoading, setTableLoading] = useState(false);
-    const [statusFilter, setStatusFilter] = useState<LeaveStatus | 'all'>('pending');
-    const [searchTerm, setSearchTerm] = useState("");
-    const debouncedSearch = useDebounce(searchTerm, 500);
 
     // Stats state
     const [stats, setStats] = useState({
@@ -40,10 +51,20 @@ const Leave: React.FC = () => {
     // Pagination state
     const [pagination, setPagination] = useState({
         total: 0,
-        page: 1,
+        page: initialPage,
         limit: 10,
         totalPages: 1
     });
+
+    // Sync state to URL
+    useEffect(() => {
+        const params: Record<string, string> = {};
+        if (debouncedSearch) params.search = debouncedSearch;
+        if (statusFilter !== "pending") params.status = statusFilter;
+        if (pagination.page > 1) params.page = pagination.page.toString();
+        
+        setSearchParams(params, { replace: true });
+    }, [debouncedSearch, statusFilter, pagination.page, setSearchParams]);
 
     // Action Modal State
     const [selectedRequest, setSelectedRequest] = useState<LeaveRequest | null>(null);
@@ -71,16 +92,16 @@ const Leave: React.FC = () => {
                 page,
                 limit: pagination.limit,
                 status: statusFilter,
-                search: debouncedSearch || undefined,
+                search: debouncedSearch.trim() || undefined,
             });
             setRequests(response.data);
             setPagination(response.pagination);
 
             // If we are on 'all' filter, we can update the total stat
-            if (statusFilter === 'all' && !debouncedSearch) {
+            if (statusFilter === 'all' && !debouncedSearch.trim()) {
                 setStats(prev => ({ ...prev, total: response.pagination.total }));
             }
-            if (statusFilter === 'pending' && !debouncedSearch) {
+            if (statusFilter === 'pending' && !debouncedSearch.trim()) {
                 setStats(prev => ({ ...prev, pending: response.pagination.total }));
             }
         } catch (error) {
@@ -94,7 +115,7 @@ const Leave: React.FC = () => {
 
     // Initial fetch - Only on mount
     useEffect(() => {
-        fetchRequests(1, true);
+        fetchRequests(initialPage, true);
         fetchStats();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -167,6 +188,7 @@ const Leave: React.FC = () => {
                         Review and manage employee leave applications.
                     </p>
                 </div>
+                <TimezoneToggle variant="horizontal" />
                 {/* <div className="flex gap-3 w-full md:w-auto">
                     <Button
                         variant="outline"
@@ -207,17 +229,17 @@ const Leave: React.FC = () => {
             </div>
 
             {/* Filters & Search Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-center bg-surface/30 p-4 rounded-3xl border border-border/40 backdrop-blur-sm">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm mb-6">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="leave-requests"
                         placeholder="Search by employee name..."
-                        className="bg-surface lg:max-w-md h-12 rounded-2xl border-border/50"
                     />
                 </div>
 
-                <div className="lg:col-span-2 flex justify-start lg:justify-end gap-3">
+                <div className="shrink-0 flex items-center justify-end gap-3">
                     <UnifiedFilter
                         filters={[
                             {
@@ -246,26 +268,25 @@ const Leave: React.FC = () => {
                     </div>
                 )}
 
-                <div className="overflow-x-auto">
-                    <Table
-                        columns={columns}
-                        rows={requests}
-                        className="border-none min-w-[800px]"
-                        emptyState={
-                            <div className="text-center py-24 px-6">
-                                <div className="w-20 h-20 bg-muted/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 border border-border/50 text-foreground-tertiary">
-                                    <FileText className="w-10 h-10" />
-                                </div>
-                                <h3 className="text-xl font-black text-foreground tracking-tight">No Leave Requests</h3>
-                                <p className="text-foreground-tertiary mt-2 max-w-xs mx-auto text-sm">
-                                    {debouncedSearch
-                                        ? `We couldn't find any requests matching "${debouncedSearch}".`
-                                        : "There are no leave requests to display at the moment."}
-                                </p>
+                <Table
+                    columns={columns}
+                    rows={requests}
+                    className="border-none"
+                    tableClassName="min-w-[800px]"
+                    emptyState={
+                        <div className="text-center py-24 px-6">
+                            <div className="w-20 h-20 bg-muted/50 rounded-[2rem] flex items-center justify-center mx-auto mb-6 border border-border/50 text-foreground-tertiary">
+                                <FileText className="w-10 h-10" />
                             </div>
-                        }
-                    />
-                </div>
+                            <h3 className="text-xl font-black text-foreground tracking-tight">No Leave Requests</h3>
+                            <p className="text-foreground-tertiary mt-2 max-w-xs mx-auto text-sm">
+                                {debouncedSearch
+                                    ? `We couldn't find any requests matching "${debouncedSearch}".`
+                                    : "There are no leave requests to display at the moment."}
+                            </p>
+                        </div>
+                    }
+                />
             </div>
 
             {/* Pagination & Footer */}
@@ -329,20 +350,21 @@ const Leave: React.FC = () => {
 
                         {actionType === 'reject' && (
                             <div className="mb-8 group">
-                                <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest mb-2 block px-1 group-focus-within:text-error transition-colors">Rejection Reason</label>
-                                <textarea
-                                    className="w-full p-5 rounded-3xl border border-border/50 bg-muted/30 focus:outline-none focus:ring-4 focus:ring-error/10 focus:border-error focus:bg-surface transition-all duration-300 min-h-[120px] text-sm font-medium shadow-inner"
+                                <TextArea
+                                    label="Rejection Reason"
                                     placeholder="Provide feedback for the employee..."
                                     value={rejectionReason}
                                     onChange={(e) => setRejectionReason(e.target.value)}
+                                    maxLength={500}
+                                    rows={4}
                                 />
                             </div>
                         )}
 
                         <div className="flex flex-col sm:flex-row gap-3">
                             <Button
-                                variant="outline"
-                                className="flex-1 rounded-2xl h-14 font-black uppercase tracking-widest text-xs border-border/50 hover:bg-muted"
+                                variant="secondaryOutline"
+                                className="flex-1 rounded-2xl h-14 font-black uppercase tracking-widest text-xs border-border/50"
                                 onClick={() => {
                                     setSelectedRequest(null);
                                     setActionType(null);

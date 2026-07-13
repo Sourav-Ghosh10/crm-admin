@@ -6,9 +6,8 @@ import {
     MapPin,
     Phone,
     Mail,
-    Trash2,
-    CheckCircle2,
-    XCircle,
+    Archive,
+    RefreshCw,
     Clock,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
@@ -25,6 +24,8 @@ import FilterDropdown from "../../../components/common/Filter/FilterDropdown";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import Pagination from "../../../components/common/Pagination";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 
 const LocationsList: React.FC = () => {
@@ -49,13 +50,15 @@ const LocationsList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentLocation, setCurrentLocation] = useState<Partial<OfficeLocation> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.LOCATION_MANAGE);
+
     const fetchLocations = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
             };
             const response = await locationService.getAll(filters);
@@ -63,7 +66,7 @@ const LocationsList: React.FC = () => {
             setTotalPages(response.totalPages);
 
             // Only disable search if there's no data AND no active filters/search
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -91,40 +94,19 @@ const LocationsList: React.FC = () => {
         const action = location.isActive ? "deactivate" : "activate";
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Location`,
-            message: `Are you sure you want to ${action} "${location.name}"?`,
+            message: `Are you sure you want to ${action} "${location.name}"? ${location.isActive ? "This will archive the location." : ""}`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: location.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await locationService.update(location._id, { isActive: !location.isActive });
+                await locationService.toggleStatus(location._id, !location.isActive);
                 fetchLocations(page);
             } catch (error) {
                 console.error(`Failed to ${action} location: `, error);
 
                 const errorMessage = getErrorMessage(error, `Failed to ${action} location`);
-                alert(errorMessage);
-            }
-        }
-    };
-
-    const handleDelete = async (location: OfficeLocation) => {
-        const confirmed = await confirm({
-            title: 'Delete Location',
-            message: `Are you sure you want to PERMANENTLY delete "${location.name}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
-
-        if (confirmed) {
-            try {
-                await locationService.delete(location._id);
-                fetchLocations(page);
-            } catch (error) {
-                console.error(`Failed to delete location: `, error);
-
-                const errorMessage = getErrorMessage(error, "Failed to delete location");
                 alert(errorMessage);
             }
         }
@@ -277,19 +259,14 @@ const LocationsList: React.FC = () => {
                         )}
                         title={row.isActive ? "Deactivate" : "Activate"}
                     >
-                        {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Location"
-                    >
-                        <Trash2 className="w-4 h-4" />
+                        {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -312,35 +289,39 @@ const LocationsList: React.FC = () => {
                         Manage your global office infrastructure.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Location
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Location
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="locations"
                         placeholder="Search locations..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <FilterDropdown
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    className="h-[42px] border-border/50"
-                    options={[
-                        { value: "all", label: "All Status" },
-                        { value: "active", label: "Active Only" },
-                        { value: "inactive", label: "Inactive Only" },
-                    ]}
-                />
+                <div className="shrink-0 w-full lg:w-auto">
+                    <FilterDropdown
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest w-full lg:w-[200px]"
+                        options={[
+                            { value: "all", label: "All Status" },
+                            { value: "active", label: "Active Only" },
+                            { value: "inactive", label: "Inactive Only" },
+                        ]}
+                    />
+                </div>
             </div>
 
             <div className="bg-surface rounded-xl sm:rounded-xl border border-border/40 shadow-2xl shadow-black/[0.03] overflow-hidden relative min-h-[400px]">
@@ -351,7 +332,7 @@ const LocationsList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={locations}
                     className="border-none"
                     emptyState={
@@ -401,7 +382,7 @@ const LocationsList: React.FC = () => {
                     open={isModalOpen}
                     onClose={() => setIsModalOpen(false)}
                     title={currentLocation?._id ? "Edit Location" : "Add Location"}
-                    maxWidth="md"
+                    maxWidth="lg"
                 >
                     <LocationForm
                         initialValues={currentLocation || {}}

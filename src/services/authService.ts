@@ -19,6 +19,8 @@ interface RawUser {
   employeeId: string;
   isAdmin: boolean;
   username: string;
+  userType?: 'INTERNAL' | 'CLIENT';
+  clientId?: string;
   personalInfo: {
     firstName: string;
     lastName: string;
@@ -39,12 +41,34 @@ interface RawUser {
     };
   };
   employment: {
-    role: string;
+    role?: string | {
+      _id: string;
+      name: string;
+      description?: string;
+      permissions?: string[];
+      isActive: boolean;
+      id?: string;
+    };
+    roleId?: {
+      _id: string;
+      name: string;
+      description?: string;
+      permissions?: string[];
+      isActive: boolean;
+      id?: string;
+    };
     department: string;
     designation: string;
     dateOfJoining: string;
     employmentType: string;
-    reportingManager?: string;
+    reportingManager?: string | {
+      _id: string;
+      personalInfo: {
+        firstName: string;
+        lastName: string;
+        profilePicture?: string;
+      };
+    };
     location?: string;
     workingHours?: {
       startTime: string;
@@ -109,16 +133,19 @@ const mapUser = (raw: RawUser): User => {
   return {
     id: idValue,
     _id: idValue,
-    employeeId: raw.employeeId,
     isAdmin: raw.isAdmin,
+    employeeId: raw.employeeId,
     username: raw.username,
+    userType: raw.userType,
+    clientId: raw.clientId,
     personalInfo: {
       ...raw.personalInfo,
     },
     employment: {
       ...raw.employment,
-      role: raw.employment.role as User["employment"]["role"],
-      employmentType: raw.employment.employmentType as User["employment"]["employmentType"],
+      role: (typeof raw.employment.roleId === 'object' ? raw.employment.roleId : (raw.employment.role || "employee")) as User["employment"]["role"],
+      roleId: typeof raw.employment.roleId === 'object' ? raw.employment.roleId?._id : (raw.employment.roleId || (typeof raw.employment.role === 'string' ? raw.employment.role : undefined)),
+      employmentType: (raw.employment.employmentType || "full-time") as User["employment"]["employmentType"],
     },
     permissions: {
       ...raw.permissions,
@@ -128,6 +155,8 @@ const mapUser = (raw: RawUser): User => {
     },
     isActive: raw.isActive,
     isHolidayApplicable: raw.isHolidayApplicable ?? true,
+    isPaidLeaveApplicable: (raw as any).isPaidLeaveApplicable ?? false,
+    totalLeaveBalance: (raw as any).totalLeaveBalance ?? 0,
     lastLogin: raw.lastLogin,
     allowedIPs: [],
     failedLoginAttempts: 0
@@ -144,7 +173,6 @@ export const authService = {
         response.data.data.accessToken,
         response.data.data.refreshToken,
       );
-
       return {
         success: true,
         data: {

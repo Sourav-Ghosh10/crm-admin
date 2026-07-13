@@ -1,6 +1,16 @@
 import api from "./api";
 import type { User, UserFilters, PaginatedUserResponse } from "../types/user.types";
 
+/** Lightweight presence data returned by GET /api/employee/presence */
+export interface EmployeePresence {
+  _id: string;
+  employeeId: string;
+  name: string;
+  email: string;
+  profilePicture: string | null;
+  lastActiveAt: string | null;
+}
+
 // Helper to normalize MongoDB Extended JSON (e.g. { $oid: '...' } or { $date: '...' })
 // Helper to normalize MongoDB Extended JSON (e.g. { $oid: '...' } or { $date: '...' })
 const normalizeValue = (value: unknown): unknown => {
@@ -39,11 +49,20 @@ const normalizeValue = (value: unknown): unknown => {
   return value;
 };
 
-// Helper to normalize user data (ensure both id and _id are present as strings)
+  // Helper to normalize user data (ensure both id and _id are present as strings)
 const mapUser = (user: Record<string, unknown>): User => {
   if (!user) return user as unknown as User;
 
   const normalized = normalizeValue(user) as Record<string, unknown>;
+
+  // Handle role vs roleId transformation for UI compatibility
+  if (normalized.employment && typeof normalized.employment === 'object') {
+    const emp = normalized.employment as Record<string, unknown>;
+    if (!emp.role && emp.roleId) {
+      emp.role = emp.roleId;
+    }
+  }
+
   const idValue = (normalized._id || normalized.id || "") as string;
 
   return {
@@ -131,10 +150,20 @@ export const userService = {
     return mapUser(user);
   },
 
+  changePassword: async (id: string, data: { password: string; confirmPassword?: string }): Promise<void> => {
+    await api.put(`/users/${id}/change-password`, data);
+  },
+
   delete: async (id: string, isActive?: boolean): Promise<Record<string, unknown>> => {
     const response = await api.delete<Record<string, unknown>>(`/users/${id}`, {
       params: isActive !== undefined ? { isActive } : undefined
     });
     return (response.data?.data || response.data) as Record<string, unknown>;
+  },
+
+  /** Fetch lightweight employee presence list (for online/offline status) */
+  getPresence: async (): Promise<EmployeePresence[]> => {
+    const response = await api.get<{ success: boolean; data: EmployeePresence[] }>("/employee/presence");
+    return response.data?.data || [];
   },
 };

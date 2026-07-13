@@ -1,9 +1,10 @@
 import { renderHook, render, screen, fireEvent } from "@testing-library/react";
 import { useLeaveColumns } from "./useLeaveColumns";
+import type { LeaveRequest } from "../../types/leave.types";
 
 // Wrapper to render the component returned by format function
-const ColumnCell = ({ format, value, row }: { format: any, value: any, row: any }) => {
-    return <>{format(value, row)}</>;
+const ColumnCell = ({ format, value, row }: { format: ((val: unknown, row: LeaveRequest, index: number) => React.ReactNode) | undefined, value: unknown, row: unknown }) => {
+    return <>{format ? format(value, row as LeaveRequest, 0) : null}</>;
 };
 
 describe("useLeaveColumns Hook", () => {

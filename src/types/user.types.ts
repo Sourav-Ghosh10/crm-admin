@@ -1,3 +1,5 @@
+import type { Role } from "./role.types";
+
 export type UserRole = string;
 export type EmploymentType = "full-time" | "part-time" | "contract" | "intern";
 
@@ -16,6 +18,10 @@ export interface User {
   employeeId: string;
   username: string;
   passwordHash?: string;
+  userType?: 'INTERNAL' | 'CLIENT'; // NEW: Discriminate between internal employees and external clients
+  clientId?: string; // NEW: For CLIENT users, reference to Client document
+  assignedToClients?: Array<{ id: string, name: string }>; // NEW: For portal use
+  attendance?: { isClockedIn: boolean, status: string, sessionCount?: number, totalHoursToday?: number }; // NEW: For clock-in status
   personalInfo: {
     firstName: string;
     lastName: string;
@@ -37,7 +43,8 @@ export interface User {
     };
   };
   employment: {
-    role: UserRole;
+    roleId?: string;
+    role: Role | UserRole;
     department: string;
     designation: string;
     dateOfJoining: string;
@@ -50,6 +57,10 @@ export interface User {
         profilePicture?: string;
       };
     };
+    uanNumber?: string;
+    esiNumber?: string;
+    bankAccountNo?: string;
+    bankName?: string;
     location?: string;
     timezone?: string;
     workingHours?: {
@@ -69,6 +80,8 @@ export interface User {
   leaveBalance: Record<string, number>;
   isActive: boolean;
   isHolidayApplicable: boolean;
+  isPaidLeaveApplicable: boolean;
+  totalLeaveBalance: number;
   lastLogin?: string;
   passwordChangedAt?: string;
   failedLoginAttempts: number;
@@ -78,17 +91,20 @@ export interface User {
   resetPasswordExpires?: string;
   createdAt?: string;
   updatedAt?: string;
+  lastActiveAt?: string;
   __v?: number;
 }
 
 export interface UserFilters {
-  role?: UserRole;
+  role?:string;
+  roleId?: string;
   department?: string;
   employmentType?: EmploymentType;
   isActive?: boolean;
   search?: string;
   page?: number;
   limit?: number;
+  userType?: 'INTERNAL' | 'CLIENT';
 }
 
 export interface PaginatedUserResponse {

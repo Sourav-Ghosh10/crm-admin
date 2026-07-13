@@ -3,9 +3,8 @@ import {
     Plus,
     Edit,
     FileText,
-    CheckCircle2,
-    XCircle,
-    Trash2,
+    Archive,
+    RefreshCw,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -21,6 +20,8 @@ import UnifiedFilter from "../../../components/common/Filter/UnifiedFilter";
 import Pagination from "../../../components/common/Pagination";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const LeaveTypesList: React.FC = () => {
     const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
@@ -44,20 +45,22 @@ const LeaveTypesList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentLeaveType, setCurrentLeaveType] = useState<Partial<LeaveType> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.LEAVE_TYPE_MANAGE);
+
     const fetchLeaveTypes = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
             };
             const response = await leaveTypeService.getAll(filters);
             setLeaveTypes(response.data);
             setTotalPages(response.totalPages);
 
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -85,42 +88,26 @@ const LeaveTypesList: React.FC = () => {
         const action = leaveType.isActive ? "deactivate" : "activate";
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Leave Type`,
-            message: `Are you sure you want to ${action} "${leaveType.name}"?`,
+            message: leaveType.isActive
+                ? `Are you sure you want to deactivate "${leaveType.name}" ? It will be hidden from new leave requests but preserved in the database.`
+                : `Are you sure you want to reactivate "${leaveType.name}" ? It will become available for leave requests again.`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: leaveType.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await leaveTypeService.update(leaveType._id, { isActive: !leaveType.isActive });
+                await leaveTypeService.toggleStatus(leaveType._id, !leaveType.isActive);
                 fetchLeaveTypes(page);
             } catch (error) {
-                console.error(`Failed to ${action} leave type:`, error);
+                console.error(`Failed to ${action} leave type: `, error);
                 const errorMessage = getErrorMessage(error, `Failed to ${action} leave type`);
                 alert(errorMessage);
             }
         }
     };
 
-    const handleDelete = async (leaveType: LeaveType) => {
-        const confirmed = await confirm({
-            title: 'Delete Leave Type',
-            message: `Are you sure you want to PERMANENTLY delete "${leaveType.name}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
 
-        if (confirmed) {
-            try {
-                await leaveTypeService.delete(leaveType._id);
-                fetchLeaveTypes(page);
-            } catch (error) {
-                console.error(`Failed to delete leave type:`, error);
-                const errorMessage = getErrorMessage(error, "Failed to delete leave type");
-                alert(errorMessage);
-            }
-        }
-    };
 
     const handleEdit = (leaveType: LeaveType) => {
         setCurrentLeaveType(leaveType);
@@ -129,7 +116,7 @@ const LeaveTypesList: React.FC = () => {
     };
 
     const handleAdd = () => {
-        setCurrentLeaveType({ isActive: true, isPaid: true });
+        setCurrentLeaveType({ isActive: true, isPaid: true, allowPastDates: true });
         setError(null);
         setIsModalOpen(true);
     };
@@ -189,15 +176,22 @@ const LeaveTypesList: React.FC = () => {
             )
         },
         {
-            _id: "allowance",
-            label: "Allowance",
+            _id: "allowPastDates",
+            label: "Past Dates",
             format: (_: unknown, row: LeaveType) => (
-                <div className="flex flex-col">
-                    <span className="font-bold text-foreground text-sm">{row.defaultAmount} Days</span>
-                    <span className="text-[10px] text-foreground-tertiary uppercase font-black">{row.resetFrequency}</span>
-                </div>
+                <span
+                    className={cn(
+                        "px-2 py-1 rounded-lg text-[10px] font-bold uppercase border",
+                        row.allowPastDates !== false
+                            ? "bg-emerald-50 text-emerald-600 border-emerald-100"
+                            : "bg-amber-50 text-amber-600 border-amber-100"
+                    )}
+                >
+                    {row.allowPastDates !== false ? "Allowed" : "Restricted"}
+                </span>
             )
         },
+
         {
             _id: "departments",
             label: "Departments",
@@ -228,15 +222,7 @@ const LeaveTypesList: React.FC = () => {
                 );
             }
         },
-        {
-            _id: "carryForward",
-            label: "Carry Forward",
-            format: (_: unknown, row: LeaveType) => (
-                <span className="text-foreground-secondary text-xs font-medium">
-                    Up to {row.maxCarryForward} Days
-                </span>
-            )
-        },
+
         {
             _id: "status",
             label: "Status",
@@ -277,20 +263,15 @@ const LeaveTypesList: React.FC = () => {
                             )}
                             title={row.isActive ? "Deactivate" : "Activate"}
                         >
-                            {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                        </button>
-                        <button
-                            onClick={() => handleDelete(row)}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                            title="Delete Leave Type"
-                        >
-                            <Trash2 className="w-4 h-4" />
+                            {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                         </button>
                     </div>
                 );
             },
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -313,26 +294,28 @@ const LeaveTypesList: React.FC = () => {
                         Manage the types of leave available to employees.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Leave Type
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Leave Type
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="leave-types"
                         placeholder="Search leave types..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <div className="lg:col-span-2 flex justify-start gap-2">
+                <div className="shrink-0 flex items-center justify-end gap-2">
                     <UnifiedFilter
                         filters={[
                             {
@@ -359,7 +342,7 @@ const LeaveTypesList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={leaveTypes}
                     className="border-none"
                     emptyState={
@@ -392,7 +375,7 @@ const LeaveTypesList: React.FC = () => {
                 open={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 title={currentLeaveType?._id ? "Edit Leave Type" : "Add Leave Type"}
-                maxWidth="md"
+                maxWidth="lg"
             >
                 <LeaveTypeForm
                     initialValues={currentLeaveType || {}}

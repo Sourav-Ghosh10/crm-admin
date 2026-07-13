@@ -9,8 +9,9 @@ import type { User as UserType } from '../../types/user.types';
 import type { OfficeLocation } from '../../types/organization.types';
 import FormError from '../../components/common/FormError/FormError';
 import { getErrorMessage } from '../../utils/errorHandling';
-import { User, Calendar, Clock, MapPin, FileText, CheckCircle2, Users } from 'lucide-react';
+import { User, Calendar, Clock, MapPin, CheckCircle2, Users } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import TextArea from '../../components/common/Input/TextArea';
 
 export interface ShiftEditorProps {
     isOpen: boolean;
@@ -49,7 +50,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
     prefilledDate,
     employees,
     locations,
-    // existingShifts = [], // Kept in props but unused - might be needed by parent
+    existingShifts = [],
     isBulkMode = false,
     selectedEmployeeIds = [],
 }) => {
@@ -124,7 +125,41 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
             if (appliedFields.includes('endTime') && !formData.endTime) {
                 newErrors.endTime = 'End time is required';
             }
-            // Removed: end time must be after start time check to support night shifts crossing midnight
+            if (formData.startTime === formData.endTime) {
+                newErrors.endTime = 'End time cannot be same as start time';
+            }
+
+            // Overlap validation
+            if (!isBulkMode && formData.startTime && formData.endTime && existingShifts.length > 0) {
+                const dayShift = existingShifts[0];
+                const startTimes = Array.isArray(dayShift.startTime) ? dayShift.startTime : [dayShift.startTime].filter(Boolean);
+                const endTimes = Array.isArray(dayShift.endTime) ? dayShift.endTime : [dayShift.endTime].filter(Boolean);
+
+                const currentStart = formData.startTime;
+                let currentEnd = formData.endTime;
+                if (currentEnd < currentStart) {
+                    // Normalize for comparison
+                    const [h, m] = currentEnd.split(':').map(Number);
+                    currentEnd = `${h + 24}:${m.toString().padStart(2, '0')}`;
+                }
+
+                for (let i = 0; i < startTimes.length; i++) {
+                    // Skip the slot we are currently editing
+                    if (shift && editingTimeIndex === i) continue;
+
+                    const otherStart = startTimes[i] as string;
+                    let otherEnd = endTimes[i] as string;
+                    if (otherEnd < otherStart) {
+                        const [h, m] = otherEnd.split(':').map(Number);
+                        otherEnd = `${h + 24}:${m.toString().padStart(2, '0')}`;
+                    }
+
+                    if (currentStart < otherEnd && currentEnd > otherStart) {
+                        newErrors.endTime = `This time slot overlaps with an existing shift (${startTimes[i]} - ${endTimes[i]})`;
+                        break;
+                    }
+                }
+            }
         }
 
         setErrors(newErrors);
@@ -196,24 +231,24 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
             maxWidth="md"
             // className="rounded-[2.5rem]"
             actions={
-                <div className="flex gap-3 w-full sm:w-auto">
+                <>
                     <Button
                         variant="ghost"
                         onClick={onClose}
                         disabled={isSaving}
-                        className="rounded-2xl"
+                        className="w-full sm:w-auto rounded-2xl"
                     >
                         Back
                     </Button>
                     <Button
                         onClick={handleSubmit}
                         isLoading={isSaving}
-                        className="rounded-2xl flex-1 sm:flex-none shadow-lg shadow-primary/20"
+                        className="w-full sm:w-auto rounded-2xl shadow-lg shadow-primary/20"
                         startIcon={isBulkMode ? <CheckCircle2 className="w-4 h-4" /> : undefined}
                     >
                         {isBulkMode ? `Update ${selectedEmployeeIds.length} Schedules` : (shift ? 'Save Changes' : 'Draft Shift')}
                     </Button>
-                </div>
+                </>
             }
         >
             <div className="space-y-6">
@@ -257,6 +292,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                             value={formData.employeeId}
                             onChange={(val) => handleChange('employeeId', val)}
                             options={employeeOptions}
+                            required
                             placeholder="Select Employee"
                             className="w-full"
                             disabled={!!shift || !!prefilledEmployeeId}
@@ -286,6 +322,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                         <Input
                             type="date"
                             value={formData.date}
+                            required
                             onChange={(e) => handleChange('date', e.target.value)}
                             disabled={(isBulkMode && !appliedFields.includes('date')) || !!shift}
                             className="bg-surface border-border/40"
@@ -313,6 +350,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                         <FormSelect
                             value={formData.shiftType}
                             onChange={(val) => handleChange('shiftType', val as 'day' | 'off')}
+                            required
                             options={[
                                 { value: 'day', label: 'Work Shift' },
                                 { value: 'off', label: 'Off Duty' },
@@ -348,6 +386,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                                 <Input
                                     type="time"
                                     value={formData.startTime}
+                                    required
                                     onChange={(e) => handleChange('startTime', e.target.value)}
                                     disabled={isBulkMode && !appliedFields.includes('startTime')}
                                 />
@@ -359,6 +398,7 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                                 <Input
                                     type="time"
                                     value={formData.endTime}
+                                    required
                                     onChange={(e) => handleChange('endTime', e.target.value)}
                                     disabled={isBulkMode && !appliedFields.includes('endTime')}
                                 />
@@ -401,16 +441,17 @@ const ShiftEditor: React.FC<ShiftEditorProps> = ({
                         {isBulkMode && (
                             <input type="checkbox" checked={appliedFields.includes('notes')} onChange={() => toggleField('notes')} className="absolute top-4 right-4 w-4 h-4 rounded text-primary" />
                         )}
-                        <label className="flex items-center gap-2 text-[10px] font-black uppercase text-foreground-tertiary tracking-widest mb-3">
-                            <FileText className="w-3.5 h-3.5 text-primary" />
-                            Internal Notes
-                        </label>
-                        <textarea
-                            className="w-full min-h-[42px] px-4 py-2 bg-surface border border-border/40 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/10 focus:border-primary transition-all text-sm resize-none"
+                        <TextArea
+                            label="Internal Notes"
                             placeholder="Add brief details..."
-                            value={formData.notes}
+                            value={formData.notes || ''}
                             onChange={(e) => handleChange('notes', e.target.value)}
                             disabled={isBulkMode && !appliedFields.includes('notes')}
+                            maxLength={500}
+                            rows={1}
+                            className="bg-surface"
+                            error={!!errors.notes}
+                            helperText={errors.notes as string}
                         />
                     </div>
                 </div>

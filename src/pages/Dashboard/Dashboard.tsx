@@ -1,6 +1,8 @@
 import React from "react";
 import { Users, CheckCircle, Clock, TrendingUp } from "lucide-react";
 import { cn } from "../../lib/utils";
+import ProfitWidget from "../../components/dashboard/ProfitWidget";
+import { usePermissions } from "../../hooks/usePermissions";
 
 interface StatCardProps {
   title: string;
@@ -47,9 +49,26 @@ const StatCard: React.FC<StatCardProps> = ({
 );
 
 const Dashboard: React.FC = () => {
+  const { isSuperAdmin } = usePermissions();
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-black text-foreground tracking-tighter uppercase">Enterprise Overview</h1>
+          <p className="text-foreground-tertiary text-xs font-bold uppercase tracking-widest mt-1">Operational Control Center</p>
+        </div>
+        <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-success/10 rounded-full border border-success/20">
+          <span className="w-2 h-2 rounded-full bg-success animate-pulse" />
+          <span className="text-[10px] font-black text-success uppercase tracking-[0.2em]">Systems: Optimal</span>
+        </div>
+      </div>
+
+      {isSuperAdmin && (
+        <div className="animate-in fade-in slide-in-from-top-4 duration-700">
+          <ProfitWidget />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <StatCard
@@ -75,8 +94,8 @@ const Dashboard: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-md">
-          <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
+        <div className="bg-surface p-4 sm:p-6 rounded-[2rem] border border-border/50 shadow-sm">
+          <h2 className="text-sm font-black text-foreground uppercase tracking-widest mb-6">Recent Activity</h2>
           <div className="space-y-4">
             {[
               { user: "John Doe", action: "clocked in", time: "9:00 AM" },
@@ -89,18 +108,18 @@ const Dashboard: React.FC = () => {
             ].map((activity, index) => (
               <div
                 key={index}
-                className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                className="flex items-center justify-between py-3 border-b border-border last:border-0"
               >
                 <div>
-                  <span className="font-medium text-foreground">
+                  <span className="text-sm font-bold text-foreground">
                     {activity.user}
                   </span>
-                  <span className="text-foreground-secondary">
+                  <span className="text-xs text-foreground-secondary">
                     {" "}
                     {activity.action}
                   </span>
                 </div>
-                <span className="text-sm text-foreground-tertiary">
+                <span className="text-[10px] font-bold text-foreground-tertiary uppercase">
                   {activity.time}
                 </span>
               </div>
@@ -108,24 +127,24 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="bg-surface p-4 sm:p-6 rounded-xl shadow-md">
-          <h2 className="text-lg font-semibold mb-4">Quick Stats</h2>
+        <div className="bg-surface p-4 sm:p-6 rounded-[2rem] border border-border/50 shadow-sm">
+          <h2 className="text-sm font-black text-foreground uppercase tracking-widest mb-6">Resource Allocation</h2>
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-foreground-secondary">Present Today</span>
-              <span className="font-semibold text-success">142</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-success/5 border border-success/10">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Present Today</span>
+              <span className="text-lg font-black text-success">142</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-foreground-secondary">Absent Today</span>
-              <span className="font-semibold text-error">14</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-error/5 border border-error/10">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Absent Today</span>
+              <span className="text-lg font-black text-error">14</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-foreground-secondary">On Leave</span>
-              <span className="font-semibold text-warning">8</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-warning/5 border border-warning/10">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">On Leave</span>
+              <span className="text-lg font-black text-warning">8</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-foreground-secondary">Late Arrivals</span>
-              <span className="font-semibold text-info">5</span>
+            <div className="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10">
+              <span className="text-xs font-bold text-foreground-secondary uppercase tracking-wider">Late Arrivals</span>
+              <span className="text-lg font-black text-primary">5</span>
             </div>
           </div>
         </div>

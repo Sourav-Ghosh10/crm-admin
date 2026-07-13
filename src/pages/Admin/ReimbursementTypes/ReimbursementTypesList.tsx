@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
     Plus,
     Edit,
-    CheckCircle2,
-    XCircle,
+    Archive,
+    RefreshCw,
     ReceiptText,
     Calendar
 } from "lucide-react";
@@ -22,6 +22,8 @@ import UnifiedFilter from "../../../components/common/Filter/UnifiedFilter";
 import Pagination from "../../../components/common/Pagination";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const ReimbursementTypesList: React.FC = () => {
     const [reimbursementTypes, setReimbursementTypes] = useState<ReimbursementType[]>([]);
@@ -45,20 +47,22 @@ const ReimbursementTypesList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentType, setCurrentType] = useState<Partial<ReimbursementType> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.REIMBURSEMENT_TYPE_MANAGE);
+
     const fetchReimbursementTypes = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
             };
             const response = await reimbursementTypeService.getAll(filters);
             setReimbursementTypes(response.data);
             setTotalPages(response.totalPages);
 
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -220,13 +224,15 @@ const ReimbursementTypesList: React.FC = () => {
                             )}
                             title={row.isActive ? "Deactivate" : "Activate"}
                         >
-                            {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                            {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                         </button>
                     </div>
                 );
             },
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -249,26 +255,28 @@ const ReimbursementTypesList: React.FC = () => {
                         Manage expenditure categories for reimbursements.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Reimbursement Type
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Reimbursement Type
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="reimbursement-types"
                         placeholder="Search types..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <div className="lg:col-span-2 flex justify-start gap-2">
+                <div className="shrink-0 flex items-center justify-end gap-2">
                     <UnifiedFilter
                         filters={[
                             {
@@ -295,7 +303,7 @@ const ReimbursementTypesList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={reimbursementTypes}
                     className="border-none"
                     emptyState={

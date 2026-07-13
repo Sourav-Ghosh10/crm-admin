@@ -10,20 +10,23 @@ import {
     Globe,
     Mail,
     Phone,
+    HelpCircle
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
 import Table from "../../../components/common/Table";
 import { clientService } from "../../../services/clientService";
-import type { Client } from "../../../types/client.types";
+import type { Client, ClientFilters } from "../../../types/client.types";
 import EmptyState from "../../../components/common/EmptyState/EmptyState";
 import { useDebounce } from "../../../hooks/useDebounce";
 import { useConfirmation } from "../../../hooks/useConfirmation";
 import FilterDropdown from "../../../components/common/Filter/FilterDropdown";
 
-import { SearchInput } from "../../../components/common/Search/SearchInput";
 import Pagination from "../../../components/common/Pagination";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
+import { SearchInput } from "../../../components/common/Search/SearchInput";
 
 const ClientsList: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
@@ -33,13 +36,11 @@ const ClientsList: React.FC = () => {
     const debouncedSearchTerm = useDebounce(searchTerm, 500);
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [hasData, setHasData] = useState(true);
-    // const [error, setError] = useState<string | string[] | null>(null);
 
     const navigate = useNavigate();
-
     const { confirm, ConfirmationDialog } = useConfirmation();
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.CLIENT_MANAGE);
 
-    // Pagination
     const [page, setPage] = useState(1);
     const [limit] = useState(10);
     const [totalPages, setTotalPages] = useState(0);
@@ -47,16 +48,15 @@ const ClientsList: React.FC = () => {
     const fetchData = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
-            // Simulate network latency for perceptible loading
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            const params: any = {
+            const params: ClientFilters = {
                 page: currentPage,
                 limit: limit,
             };
 
-            if (debouncedSearchTerm) {
-                params.search = debouncedSearchTerm;
+            if (debouncedSearchTerm.trim()) {
+                params.search = debouncedSearchTerm.trim();
             }
 
             if (statusFilter !== "all") {
@@ -68,14 +68,13 @@ const ClientsList: React.FC = () => {
             setClients(response.clients);
             setTotalPages(response.totalPages);
 
-            if (response.total === 0 && !debouncedSearchTerm && statusFilter === "all") {
+            if (response.total === 0 && !debouncedSearchTerm.trim() && statusFilter === "all") {
                 setHasData(false);
             } else {
                 setHasData(true);
             }
         } catch (error) {
             console.error("Failed to fetch clients:", error);
-            // setError(getErrorMessage(error, "Failed to fetch clients"));
         } finally {
             setLoading(false);
             setIsInitialLoading(false);
@@ -137,6 +136,8 @@ const ClientsList: React.FC = () => {
         navigate('create');
     };
 
+    const { isSuperAdmin } = usePermissions();
+
     const columns = [
         {
             _id: "name",
@@ -177,6 +178,44 @@ const ClientsList: React.FC = () => {
             )
         },
         {
+            _id: "billing",
+            label: "Billing Rate",
+            format: (_: unknown, row: Client) => (
+                <div className="flex flex-col">
+                    <span className={cn(
+                        "font-bold text-xs uppercase tracking-wider",
+                        isSuperAdmin ? "text-foreground" : "text-foreground-tertiary italic"
+                    )}>
+                        {isSuperAdmin
+                            ? `${row.currency === 'GBP' ? '£' : '$'}${row.billing_rate?.toLocaleString()}`
+                            : "Restricted"
+                        }
+                    </span>
+                    {isSuperAdmin && (
+                        <span className="text-[10px] text-foreground-tertiary">
+                            per effective hour
+                        </span>
+                    )}
+                </div>
+            )
+        },
+        {
+            _id: "delivery",
+            label: "Delivery Channel",
+            format: (_: unknown, row: Client) => (
+                <div className="flex items-center gap-2">
+                    <span className={cn(
+                        "px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border",
+                        row.communication_preference === 'both' ? "bg-primary/10 border-primary/20 text-primary" :
+                            row.communication_preference === 'whatsapp' ? "bg-emerald-50 border-emerald-200 text-emerald-600" :
+                                "bg-blue-50 border-blue-200 text-blue-600"
+                    )}>
+                        {row.communication_preference || 'email'}
+                    </span>
+                </div>
+            )
+        },
+        {
             _id: "status",
             label: "Status",
             format: (_: unknown, row: Client) => (
@@ -196,35 +235,41 @@ const ClientsList: React.FC = () => {
             align: "right" as const,
             format: (_: unknown, row: Client) => (
                 <div className="flex items-center justify-end gap-2">
-                    <button
-                        onClick={() => handleEdit(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all"
-                        title="Edit Client"
-                    >
-                        <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={() => handleToggleStatus(row)}
-                        className={cn(
-                            "w-9 h-9 flex items-center justify-center rounded-xl transition-all",
-                            row.is_active ? "hover:bg-warning/10 hover:text-warning" : "hover:bg-success/10 hover:text-success",
-                            "text-foreground-secondary"
-                        )}
-                        title={row.is_active ? "Deactivate" : "Activate"}
-                    >
-                        {row.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Client"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canManage && (
+                        <>
+                            <button
+                                onClick={() => handleEdit(row)}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all"
+                                title="Edit Client"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => handleToggleStatus(row)}
+                                className={cn(
+                                    "w-9 h-9 flex items-center justify-center rounded-xl transition-all",
+                                    row.is_active ? "hover:bg-warning/10 hover:text-warning" : "hover:bg-success/10 hover:text-success",
+                                    "text-foreground-secondary"
+                                )}
+                                title={row.is_active ? "Deactivate" : "Activate"}
+                            >
+                                {row.is_active ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                            </button>
+                            <button
+                                onClick={() => handleDelete(row)}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
+                                title="Delete Client"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </>
+                    )}
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -247,38 +292,51 @@ const ClientsList: React.FC = () => {
                         Manage active clients and billing configurations.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Onboard Client
-                </Button>
+                {canManage && (
+                    <div className="flex items-center gap-3">
+                        <a 
+                            href="mailto:support@codecit.com?subject=Client Management Support"
+                            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 hover:bg-muted text-foreground-tertiary hover:text-primary transition-all border border-border font-black text-[10px] uppercase tracking-widest"
+                        >
+                            <HelpCircle className="w-4 h-4" />
+                            Help & Support
+                        </a>
+                        <Button
+                            onClick={handleAdd}
+                            startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                        >
+                            Onboard Client
+                        </Button>
+                    </div>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={(val) => {
                             setSearchTerm(val);
                             setLoading(true);
                         }}
+                        searchKey="clients"
                         placeholder="Search by name, contact or city..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <FilterDropdown
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest"
-                    options={[
-                        { value: "all", label: "All Status" },
-                        { value: "active", label: "Active Only" },
-                        { value: "inactive", label: "Inactive Only" },
-                    ]}
-                />
+                <div className="shrink-0 w-full lg:w-auto">
+                    <FilterDropdown
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest w-full lg:w-[200px]"
+                        options={[
+                            { value: "all", label: "All Status" },
+                            { value: "active", label: "Active Only" },
+                            { value: "inactive", label: "Inactive Only" },
+                        ]}
+                    />
+                </div>
             </div>
 
             <div className="bg-surface rounded-xl sm:rounded-xl border border-border/40 shadow-primary/5 overflow-hidden relative min-h-[400px]">
@@ -289,7 +347,7 @@ const ClientsList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={clients}
                     className="border-none"
                     emptyState={

@@ -47,11 +47,19 @@ export const designationService = {
         return result as Designation;
     },
 
-    delete: async (id: string, isActive: boolean = false): Promise<Record<string, unknown>> => {
-        const response = await api.delete<Record<string, unknown>>(`/designations/${id}`, {
-            params: { isActive }
+    delete: async (id: string): Promise<Record<string, unknown>> => {
+        const response = await api.patch<Record<string, unknown>>(`/designations/${id}/status`, {
+            isActive: false
         });
         const result = (response.data?.data || response.data) as Record<string, unknown>;
         return result;
+    },
+
+    toggleStatus: async (id: string, isActive: boolean): Promise<Designation> => {
+        const response = await api.patch<Record<string, unknown>>(`/designations/${id}/status`, {
+            isActive
+        });
+        const result = response.data?.data || response.data;
+        return result as Designation;
     }
 };

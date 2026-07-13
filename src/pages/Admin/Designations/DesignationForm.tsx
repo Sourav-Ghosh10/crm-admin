@@ -2,16 +2,17 @@ import React from "react";
 import { useForm, Controller, type Resolver } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { Briefcase, FileText } from "lucide-react";
+import { Briefcase } from "lucide-react";
 import Input from "../../../components/common/Input";
+import TextArea from "../../../components/common/Input/TextArea";
 import Button from "../../../components/common/Button";
 import type { Designation, DesignationInput } from "../../../types/organization.types";
 import { cn } from "../../../lib/utils";
-// import FormSelect from "../../../components/common/Select/FormSelect";
+
 
 const schema = yup.object({
-    title: yup.string().required("Archetype title is required").trim(),
-    description: yup.string().optional().trim(),
+    title: yup.string().required("Archetype title is required").trim().min(2, "Title must be at least 2 characters").max(50, "Title cannot exceed 50 characters"),
+    description: yup.string().optional().trim().max(500, "Description cannot exceed 500 characters"),
     isActive: yup.boolean().default(true),
 });
 
@@ -34,6 +35,7 @@ const DesignationForm: React.FC<DesignationFormProps> = ({
     error,
 }) => {
     const { control, handleSubmit, reset, formState: { errors } } = useForm<DesignationInput>({
+        mode: "onChange",
         resolver: yupResolver(schema) as Resolver<DesignationInput>,
         defaultValues: {
             title: initialValues?.title || "",
@@ -61,10 +63,12 @@ const DesignationForm: React.FC<DesignationFormProps> = ({
                         <Input
                             {...field}
                             label="Designation Title"
+                            required
                             placeholder="e.g. Senior Neural Architect"
                             error={!!errors.title}
                             helperText={errors.title?.message}
                             startAdornment={<Briefcase className="w-4 h-4" />}
+                            maxLength={50}
                         />
                     )}
                 />
@@ -74,72 +78,58 @@ const DesignationForm: React.FC<DesignationFormProps> = ({
                 name="description"
                 control={control}
                 render={({ field }) => (
-                    <div className="space-y-1.5 group">
-                        <label className="block text-[10px] font-black text-foreground-tertiary uppercase tracking-widest px-1">
-                            Description
-                        </label>
+                    <TextArea
+                        {...field}
+                        label="Description"
+                        rows={3}
+                        placeholder="Detail the responsibilities of this role..."
+                        error={!!errors.description}
+                        helperText={errors.description?.message}
+                        maxLength={500}
+                    />
+                )}
+            />
+
+            <Controller
+                name="isActive"
+                control={control}
+                render={({ field }) => (
+                    <label className="flex items-center cursor-pointer group py-2 w-fit">
                         <div className="relative">
-                            <textarea
-                                {...field}
-                                rows={3}
-                                placeholder="Detail the responsibilities of this role..."
-                                className={cn(
-                                    "w-full px-5 py-4 text-sm border rounded-2xl bg-surface/50 backdrop-blur-md transition-all duration-300 outline-none resize-none",
-                                    "focus:ring-4 focus:ring-primary/10 focus:border-primary focus:shadow-xl",
-                                    errors.description ? "border-error" : "border-border hover:border-primary/40"
-                                )}
+                            <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={field.value}
+                                onChange={field.onChange}
                             />
-                            <div className="absolute right-4 bottom-4 text-primary opacity-20 pointer-events-none group-focus-within:opacity-100 transition-opacity">
-                                <FileText className="w-5 h-5" />
-                            </div>
+                            <div className={cn(
+                                "w-10 h-5 bg-muted rounded-full transition-colors border border-border",
+                                field.value && "bg-primary/20 border-primary/40"
+                            )} />
+                            <div className={cn(
+                                "absolute left-1 top-1 w-3 h-3 bg-foreground-tertiary rounded-full transition-all",
+                                field.value && "translate-x-5 bg-primary"
+                            )} />
                         </div>
-                    </div>
+                        <span className={cn(
+                            "ml-3 text-[10px] font-black uppercase tracking-widest transition-colors",
+                            field.value ? "text-primary" : "text-foreground-tertiary"
+                        )}>
+                            {field.value ? "Active Status" : "Inactive Status"}
+                        </span>
+                    </label>
                 )}
             />
 
             <ModalFooter>
-                <div className="flex flex-col sm:flex-row items-center justify-between w-full gap-4 sm:gap-3">
-                    <Controller
-                        name="isActive"
-                        control={control}
-                        render={({ field }) => (
-                            <label className="flex items-center cursor-pointer group py-2">
-                                <div className="relative">
-                                    <input
-                                        type="checkbox"
-                                        className="sr-only"
-                                        checked={field.value}
-                                        onChange={field.onChange}
-                                    />
-                                    <div className={cn(
-                                        "w-10 h-5 bg-muted rounded-full transition-colors border border-border",
-                                        field.value && "bg-primary/20 border-primary/40"
-                                    )} />
-                                    <div className={cn(
-                                        "absolute left-1 top-1 w-3 h-3 bg-foreground-tertiary rounded-full transition-all",
-                                        field.value && "translate-x-5 bg-primary"
-                                    )} />
-                                </div>
-                                <span className={cn(
-                                    "ml-3 text-[10px] font-black uppercase tracking-widest transition-colors",
-                                    field.value ? "text-primary" : "text-foreground-tertiary"
-                                )}>
-                                    {field.value ? "Active" : "Inactive"}
-                                </span>
-                            </label>
-                        )}
-                    />
-                    <div className="flex items-center gap-3 w-full sm:w-auto justify-center sm:justify-end border-t sm:border-t-0 border-border/50 pt-4 sm:pt-0">
-                        <Button variant="outline" onClick={onCancel} className="flex-1 sm:flex-none">
-                            Cancel
-                        </Button>
-                        <Button type="submit" form="designation-form" disabled={isLoading} className="flex-1 sm:flex-none">
-                            {initialValues?._id ? "Save Changes" : "Create Designation"}
-                        </Button>
-                    </div>
-                </div>
+                <Button variant="secondaryOutline" onClick={onCancel} className="w-full sm:w-auto">
+                    Cancel
+                </Button>
+                <Button type="submit" form="designation-form" disabled={isLoading} className="w-full sm:w-auto">
+                    {initialValues?._id ? "Save Changes" : "Create Designation"}
+                </Button>
             </ModalFooter>
-        </form>
+        </form >
     );
 };
 

@@ -18,18 +18,23 @@ import {
   ArrowRight,
   ArrowLeft,
   Plus,
+  KeyRound,
+  Lock,
 } from "lucide-react";
-import type { User, UserRole, EmploymentType } from "../../types/user.types";
+import type { User, EmploymentType } from "../../types/user.types";
 import type { OfficeLocation, Department, Designation, LeaveType } from "../../types/organization.types";
 import { Card, CardHeader, CardTitle, CardContent } from "../../components/common/Card";
 import Button from "../../components/common/Button";
 import Input from "../../components/common/Input";
+import PhoneInput from "../../components/common/Input/PhoneInput";
 import { cn } from "../../lib/utils";
 import FormSelect from "../../components/common/Select/FormSelect";
 import { WEEK_DAYS } from "../../utils/constants";
 import FormError from "../../components/common/FormError/FormError";
 import { cleanFormData } from "../../utils/formHelpers";
-import { ModalFooter } from "../../components/common/Modal/Modal";
+import Modal, { ModalFooter } from "../../components/common/Modal/Modal";
+import { userService } from "../../services/userService";
+import { getErrorMessage } from "../../utils/errorHandling";
 
 import type { Role } from "../../types/role.types";
 
@@ -44,46 +49,73 @@ interface UserFormProps {
   onCancel?: () => void;
   error?: string | string[] | null;
   users?: User[];
+  onSearchUsers?: (search: string) => void;
+  onLoadMoreUsers?: () => void;
+  isUsersLoadingMore?: boolean;
   leaveTypes?: LeaveType[];
+  onClearError?: () => void;
 }
+
+// Helper function to check if a role is a Client role
+const isClientRole = (roleId: string, roles: Role[]): boolean => {
+  if (!roleId || !roles || roles.length === 0) return false;
+  const role = roles.find(r => r._id === roleId || r.id === roleId || r.name === roleId);
+  return role ? role.name.toLowerCase() === 'client' : false;
+};
 
 const baseSchema = yup.object({
   isAdmin: yup.boolean().required().default(false),
   isHolidayApplicable: yup.boolean().default(true),
-  employeeId: yup.string().required("Employee ID is required").trim().uppercase(),
-  username: yup.string().required("Username is required").min(3).max(50).trim().lowercase(),
+  isPaidLeaveApplicable: yup.boolean().default(true),
+  totalLeaveBalance: yup.number().min(0, "Cannot be negative").default(0),
+  employeeId: yup.string()
+    .trim()
+    .required("Employee ID is required")
+    // .matches(/^EMP\d{3,}$/, "Employee ID must be in format EMP001 (EMP followed by at least 3 digits)")
+    .uppercase(),
+  username: yup.string()
+    .trim()
+    .required("Username is required")
+    .min(3, "Username must be at least 3 characters")
+    .max(50, "Username cannot exceed 50 characters")
+    .lowercase()
+    .matches(/^[a-z0-9._-]+$/, "Username can only contain lowercase letters, numbers, and .-_"),
   personalInfo: yup.object({
-    firstName: yup.string().required("First name is required").max(50).trim(),
-    lastName: yup.string().required("Last name is required").max(50).trim(),
-    email: yup.string().email("Invalid email").required("Email is required").matches(/^\S+@\S+\.\S+$/, 'Please enter a valid email').lowercase().trim(),
-    profilePicture: yup.string().url("Invalid URL").trim(),
-    phone: yup.string(),
+    firstName: yup.string().trim().required("First name is required").max(50),
+    lastName: yup.string().trim().required("Last name is required").max(50),
+    email: yup.string().trim().email("Invalid email").required("Email is required").matches(/^\S+@\S+\.\S+$/, 'Please enter a valid email').lowercase(),
+    profilePicture: yup.string().trim().url("Invalid URL"),
+    phone: yup.string().trim(),
     dateOfBirth: yup.string(),
     address: yup.object({
-      street: yup.string(),
-      city: yup.string(),
-      state: yup.string(),
-      country: yup.string(),
-      zipCode: yup.string(),
+      street: yup.string().trim(),
+      city: yup.string().trim(),
+      state: yup.string().trim(),
+      country: yup.string().trim(),
+      zipCode: yup.string().trim(),
     }),
     emergencyContact: yup.object({
-      name: yup.string(),
-      relationship: yup.string(),
-      phone: yup.string(),
+      name: yup.string().trim(),
+      relationship: yup.string().trim(),
+      phone: yup.string().trim(),
     }),
   }),
   employment: yup.object({
-    role: yup.string().required("Role is required"),
-    department: yup.string().required("Department is required"),
-    designation: yup.string().required("Designation is required"),
-    dateOfJoining: yup.string().required("Joining date is required"),
-    employmentType: yup.string().oneOf(["full-time", "part-time", "contract", "intern"]).required("Type is required"),
-    reportingManager: yup.string(),
-    location: yup.string(),
+    roleId: yup.string().required("Role is required"),
+    department: yup.string().nullable(),
+    designation: yup.string().nullable(),
+    dateOfJoining: yup.string().nullable(),
+    uanNumber: yup.string().nullable().max(50),
+    esiNumber: yup.string().nullable().max(50),
+    bankAccountNo: yup.string().nullable().max(50),
+    bankName: yup.string().nullable().max(100),
+    employmentType: yup.string().oneOf(["full-time", "part-time", "contract", "intern"]),
+    reportingManager: yup.string().nullable(),
+    location: yup.string().nullable(),
     timezone: yup.string().default("Asia/Kolkata"),
     workingHours: yup.object({
-      startTime: yup.string(),
-      endTime: yup.string(),
+      startTime: yup.string().nullable(),
+      endTime: yup.string().nullable(),
       weeklyOff: yup.array().of(yup.string().defined()).defined().default([]),
     }),
   }),
@@ -98,7 +130,7 @@ const baseSchema = yup.object({
     yup.object().shape(
       Object.keys(val || {}).reduce((acc, key) => ({
         ...acc,
-        [key]: yup.number().min(0).default(0)
+        [key]: yup.number().min(0, "Cannot be negative").max(365, "Cannot exceed 365 days").default(0)
       }), {})
     )
   ),
@@ -108,6 +140,8 @@ const baseSchema = yup.object({
 type UserFormValues = {
   isAdmin: boolean;
   isHolidayApplicable: boolean;
+  isPaidLeaveApplicable: boolean;
+  totalLeaveBalance: number;
   employeeId: string;
   username: string;
   password?: string;
@@ -132,10 +166,14 @@ type UserFormValues = {
     };
   };
   employment: {
-    role: UserRole;
+    roleId: string;
     department: string;
     designation: string;
     dateOfJoining: string;
+    uanNumber?: string;
+    esiNumber?: string;
+    bankAccountNo?: string;
+    bankName?: string;
     employmentType: EmploymentType;
     reportingManager?: string;
     location?: string;
@@ -162,19 +200,177 @@ type UserFormValues = {
 
 
 interface CardProps {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  control: Control<UserFormValues, any, any>;
+  control: Control<UserFormValues>;
 }
 
 interface LeaveCardProps extends CardProps {
   leaveTypes?: LeaveType[];
 }
 
-const IdentityCard: React.FC<CardProps & { isEditMode: boolean; showPassword: boolean; setShowPassword: (v: boolean) => void }> = ({
+const PasswordChangeModalButton: React.FC<{ userId: string }> = ({ userId }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+
+  const handleOpen = () => {
+    setIsOpen(true);
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setPasswordError("");
+    setSuccessMsg("");
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("Confirm password does not match password.");
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      setPasswordError("");
+      await userService.changePassword(userId, {
+        password: newPassword,
+        confirmPassword: confirmPassword,
+      });
+      setSuccessMsg("Password changed successfully!");
+      setTimeout(() => {
+        setIsOpen(false);
+        setSuccessMsg("");
+      }, 1500);
+    } catch (err) {
+      console.error("Failed to change password:", err);
+      const msg = getErrorMessage(err, "Failed to change password");
+      setPasswordError(Array.isArray(msg) ? msg.join(", ") : msg);
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleOpen}
+        className="h-8 text-xs font-bold gap-1.5 border-amber-500/30 hover:bg-amber-500/10 hover:text-amber-600 text-foreground shrink-0"
+      >
+        <KeyRound className="w-3.5 h-3.5 text-amber-500" />
+        Change Password
+      </Button>
+
+      <Modal
+        open={isOpen}
+        onClose={() => !isChangingPassword && setIsOpen(false)}
+        title="Change Password"
+        maxWidth="sm"
+      >
+        <form onSubmit={handlePasswordSubmit} className="space-y-4 pt-2">
+          <div className="bg-muted/30 p-3.5 rounded-xl border border-border/50 text-xs text-foreground-secondary flex items-center gap-3 mb-4 shadow-sm">
+            <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <span>
+              Set a new login password for this employee account.
+            </span>
+          </div>
+
+          <Input
+            label="Password"
+            type={showNewPassword ? "text" : "password"}
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Enter new password"
+            required
+            autoComplete="new-password"
+            endAdornment={
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                onClick={() => setShowNewPassword(!showNewPassword)}
+                className="hover:text-primary transition-colors focus:outline-none h-8 w-8"
+              >
+                {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            }
+          />
+
+          <Input
+            label="Confirm password"
+            type={showConfirmPassword ? "text" : "password"}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            required
+            autoComplete="new-password"
+            endAdornment={
+              <Button
+                variant="ghost"
+                size="icon"
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="hover:text-primary transition-colors focus:outline-none h-8 w-8"
+              >
+                {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </Button>
+            }
+          />
+
+          {passwordError && (
+            <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-medium">
+              {passwordError}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-3 bg-success/10 border border-success/20 rounded-xl text-success text-xs font-medium">
+              {successMsg}
+            </div>
+          )}
+
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsOpen(false)}
+              disabled={isChangingPassword}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              disabled={isChangingPassword || !newPassword || !confirmPassword || !!successMsg}
+            >
+              {isChangingPassword ? "Updating..." : "Update Password"}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+    </>
+  );
+};
+
+const IdentityCard: React.FC<CardProps & { isEditMode: boolean; showPassword: boolean; setShowPassword: (v: boolean) => void; userId?: string }> = ({
   control,
   isEditMode,
   showPassword,
-  setShowPassword
+  setShowPassword,
+  userId
 }) => (
   <Card variant="bordered" className="overflow-hidden border-primary/10 shadow-sm hover:shadow-md transition-shadow rounded-2xl">
     <CardHeader className="bg-primary/5 border-b border-primary/10 p-2 sm:p-2.5">
@@ -190,7 +386,17 @@ const IdentityCard: React.FC<CardProps & { isEditMode: boolean; showPassword: bo
             name="employeeId"
             control={control}
             render={({ field, fieldState: { error } }) => (
-              <Input {...field} label="Employee ID" placeholder="EMP001" error={!!error} helperText={error?.message} className="rounded-xl" />
+              <Input
+                {...field}
+                onChange={(e) => field.onChange(e.target.value.trim().toUpperCase())}
+                label="Employee ID"
+                required
+                placeholder="EMP001"
+                error={!!error}
+                helperText={error?.message}
+                maxLength={20}
+                className="rounded-xl"
+              />
             )}
           />
         )}
@@ -198,23 +404,36 @@ const IdentityCard: React.FC<CardProps & { isEditMode: boolean; showPassword: bo
           name="username"
           control={control}
           render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Username" placeholder="johndoe" error={!!error} helperText={error?.message} className="rounded-xl" />
+            <Input
+              {...field}
+              onChange={(e) => field.onChange(e.target.value.trim().toLowerCase())}
+              label="Username"
+              required
+              placeholder="johndoe"
+              error={!!error}
+              helperText={error?.message}
+              className="rounded-xl"
+              maxLength={50}
+              autoComplete="off"
+            />
           )}
         />
       </div>
       {!isEditMode && (
         <Controller
-          name={"password" as never}
+          name="password"
           control={control}
           render={({ field, fieldState: { error } }) => (
             <Input
               {...field}
               label="Password"
+              required
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               error={!!error}
               helperText={error?.message}
               className="rounded-xl"
+              autoComplete="new-password"
               endAdornment={
                 <Button
                   variant="ghost"
@@ -229,6 +448,20 @@ const IdentityCard: React.FC<CardProps & { isEditMode: boolean; showPassword: bo
             />
           )}
         />
+      )}
+      {isEditMode && userId && (
+        <div className="pt-2 border-t border-border/40 mt-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/30 p-3 rounded-xl border border-border/50">
+            <div>
+              <p className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-amber-500" />
+                Security Credentials
+              </p>
+              <p className="text-[11px] text-foreground-tertiary mt-0.5">Change system login password for this employee account</p>
+            </div>
+            <PasswordChangeModalButton userId={userId} />
+          </div>
+        </div>
       )}
     </CardContent>
   </Card>
@@ -248,14 +481,32 @@ const PersonalCard: React.FC<CardProps> = ({ control }) => (
           name="personalInfo.firstName"
           control={control}
           render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="First Name" error={!!error} helperText={error?.message} className="rounded-xl" />
+            <Input
+              {...field}
+              onChange={(e) => field.onChange(e.target.value.trim())}
+              label="First Name"
+              required
+              error={!!error}
+              helperText={error?.message}
+              maxLength={50}
+              className="rounded-xl"
+            />
           )}
         />
         <Controller
           name="personalInfo.lastName"
           control={control}
           render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Last Name" error={!!error} helperText={error?.message} className="rounded-xl" />
+            <Input
+              {...field}
+              onChange={(e) => field.onChange(e.target.value.trim())}
+              label="Last Name"
+              required
+              error={!!error}
+              helperText={error?.message}
+              maxLength={50}
+              className="rounded-xl"
+            />
           )}
         />
       </div>
@@ -263,7 +514,19 @@ const PersonalCard: React.FC<CardProps> = ({ control }) => (
         name="personalInfo.email"
         control={control}
         render={({ field, fieldState: { error } }) => (
-          <Input {...field} label="Email Address" type="email" startAdornment={<Mail className="w-4 h-4" />} error={!!error} helperText={error?.message} className="rounded-xl" />
+          <Input
+            {...field}
+            onChange={(e) => field.onChange(e.target.value.trim().toLowerCase())}
+            label="Email Address"
+            required
+            type="email"
+            startAdornment={<Mail className="w-4 h-4" />}
+            error={!!error}
+            helperText={error?.message}
+            maxLength={100}
+            className="rounded-xl"
+            autoComplete="off"
+          />
         )}
       />
       {/* <Controller
@@ -273,14 +536,22 @@ const PersonalCard: React.FC<CardProps> = ({ control }) => (
           <Input {...field} label="Profile Picture URL" placeholder="https://example.com/image.jpg" error={!!error} helperText={error?.message} className="rounded-xl" />
         )}
       /> */}
-      <div className="grid grid-cols-2 gap-3">
-        <Controller
-          name="personalInfo.phone"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Phone Number" startAdornment={<Phone className="w-4 h-4" />} error={!!error} helperText={error?.message} className="rounded-xl" />
-          )}
-        />
+      <Controller
+        name="personalInfo.phone"
+        control={control}
+        render={({ field, fieldState: { error } }) => (
+          <PhoneInput
+            {...field}
+            label="Phone Number"
+            placeholder="000 000 0000"
+            error={!!error}
+            helperText={error?.message}
+            required
+            className="mb-3 sm:mb-4"
+          />
+        )}
+      />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Controller
           name="personalInfo.dateOfBirth"
           control={control}
@@ -306,25 +577,31 @@ const EmergencyCard: React.FC<CardProps> = ({ control }) => (
         name="personalInfo.emergencyContact.name"
         control={control}
         render={({ field, fieldState: { error } }) => (
-          <Input {...field} label="Contact Name" error={!!error} helperText={error?.message} className="rounded-xl" />
+          <Input {...field} label="Contact Name" maxLength={100} error={!!error} helperText={error?.message} className="rounded-xl" />
         )}
       />
-      <div className="grid grid-cols-2 gap-3">
-        <Controller
-          name="personalInfo.emergencyContact.relationship"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Relationship" error={!!error} helperText={error?.message} className="rounded-xl" />
-          )}
-        />
-        <Controller
-          name="personalInfo.emergencyContact.phone"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Phone" startAdornment={<Phone className="w-4 h-4" />} error={!!error} helperText={error?.message} className="rounded-xl" />
-          )}
-        />
-      </div>
+      <Controller
+        name="personalInfo.emergencyContact.relationship"
+        control={control}
+        render={({ field, fieldState: { error } }) => (
+          <Input {...field} label="Relationship" maxLength={50} error={!!error} helperText={error?.message} className="rounded-xl" />
+        )}
+      />
+      <Controller
+        name="personalInfo.emergencyContact.phone"
+        control={control}
+        render={({ field, fieldState: { error } }) => (
+          <PhoneInput
+            {...field}
+            label="Phone"
+            placeholder="000 000 0000"
+            error={!!error}
+            helperText={error?.message}
+            required
+            className="mb-3 sm:mb-4"
+          />
+        )}
+      />
     </CardContent>
   </Card>
 );
@@ -342,7 +619,7 @@ const AddressCard: React.FC<CardProps> = ({ control }) => (
         name="personalInfo.address.street"
         control={control}
         render={({ field }) => (
-          <Input {...field} label="Street Address" className="rounded-xl" />
+          <Input {...field} label="Street Address" maxLength={200} className="rounded-xl" />
         )}
       />
       <div className="grid grid-cols-2 gap-3">
@@ -350,14 +627,14 @@ const AddressCard: React.FC<CardProps> = ({ control }) => (
           name="personalInfo.address.city"
           control={control}
           render={({ field }) => (
-            <Input {...field} label="City" className="rounded-xl" />
+            <Input {...field} label="City" maxLength={100} className="rounded-xl" />
           )}
         />
         <Controller
           name="personalInfo.address.state"
           control={control}
           render={({ field }) => (
-            <Input {...field} label="State / Province" className="rounded-xl" />
+            <Input {...field} label="State / Province" maxLength={100} className="rounded-xl" />
           )}
         />
       </div>
@@ -366,14 +643,14 @@ const AddressCard: React.FC<CardProps> = ({ control }) => (
           name="personalInfo.address.country"
           control={control}
           render={({ field }) => (
-            <Input {...field} label="Country" className="rounded-xl" />
+            <Input {...field} label="Country" maxLength={100} className="rounded-xl" />
           )}
         />
         <Controller
           name="personalInfo.address.zipCode"
           control={control}
           render={({ field }) => (
-            <Input {...field} label="ZIP Code" className="rounded-xl" />
+            <Input {...field} label="ZIP Code" maxLength={20} className="rounded-xl" />
           )}
         />
       </div>
@@ -389,199 +666,352 @@ const EmploymentCard: React.FC<CardProps & {
   users: User[];
   currentUserId?: string;
   setValue: UseFormSetValue<UserFormValues>;
-}> = ({ control, locations, departments, designations, roles = [], users, currentUserId, setValue }) => (
-  <Card variant="bordered" className="overflow-hidden border-success/10 shadow-lg sm:shadow-xl shadow-success/5 rounded-2xl sm:rounded-3xl">
-    <CardHeader className="bg-success/5 border-b border-success/10 p-3 sm:p-4 lg:p-6">
-      <CardTitle className="flex items-center gap-2 text-success text-sm sm:text-base lg:text-lg">
-        <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />
-        Career Details
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="p-3 sm:p-4 space-y-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-        <Controller
-          name="employment.role"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Role"
-              options={roles.length > 0 ? roles.filter(r => r.isActive).map(r => ({ value: r.name.toLowerCase(), label: r.name })) : [
-                { value: "employee", label: "Employee" },
-                { value: "manager", label: "Manager" },
-                { value: "hr", label: "HR" },
-                { value: "admin", label: "Admin" },
-                { value: "contractor", label: "Contractor" },
-                { value: "client", label: "Client" }
-              ]}
-              error={!!error}
-              helperText={error?.message}
-            />
-          )}
-        />
+  onSearchUsers?: (search: string) => void;
+  onLoadMoreUsers?: () => void;
+  isUsersLoadingMore?: boolean;
+}> = ({ control, locations, departments, designations, roles = [], users, currentUserId, setValue, onSearchUsers, onLoadMoreUsers, isUsersLoadingMore }) => {
+  const [selectedRoleId, setSelectedRoleId] = React.useState<string>("");
+  const [managerSearch, setManagerSearch] = React.useState("");
+  const lastSearchRef = React.useRef("");
 
-        <Controller
-          name="employment.employmentType"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Contract Type"
-              options={[
-                { value: "full-time", label: "Full-Time" },
-                { value: "part-time", label: "Part-Time" },
-                { value: "contract", label: "Contract" },
-                { value: "intern", label: "Intern" },
-              ]}
-              error={!!error}
-              helperText={error?.message}
-            />
-          )}
-        />
+  // Debounced search for managers
+  React.useEffect(() => {
+    // Skip empty search if it was already empty on mount (avoid redundant initial fetch)
+    if (managerSearch === "" && lastSearchRef.current === "") return;
 
-        <Controller
-          name="employment.reportingManager"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Reporting Manager"
-              options={[
-                { value: "", label: "None (Top Level)" },
-                ...users
-                  .filter(u => u._id !== currentUserId)
-                  .map(u => ({
-                    value: u._id,
-                    label: `${u.personalInfo.firstName} ${u.personalInfo.lastName} (${u.employment.designation})`
-                  }))
-              ]}
-              error={!!error}
-              helperText={error?.message}
-              placeholder="Select Manager"
-            />
-          )}
-        />
-      </div>
+    const timer = setTimeout(() => {
+      onSearchUsers?.(managerSearch);
+      lastSearchRef.current = managerSearch;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [managerSearch, onSearchUsers]);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-border/50 pt-4">
-        <Controller
-          name="employment.department"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Department"
-              options={departments.filter(d => d.isActive).map(d => ({ value: d.name, label: d.name }))}
-              placeholder="Select Department"
-              error={!!error}
-              helperText={error?.message}
-            />
-          )}
-        />
-        <Controller
-          name="employment.designation"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Designation"
-              options={designations.filter(d => d.isActive).map(d => ({ value: d.title || d.name || "Untitled", label: d.title || d.name || "Untitled" }))}
-              placeholder="Select Designation"
-              error={!!error}
-              helperText={error?.message}
-            />
-          )}
-        />
-        <Controller
-          name="employment.location"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <FormSelect
-              {...field}
-              label="Work Location"
-              options={locations.filter(l => l.isActive).map(l => ({ value: l.name, label: l.name }))}
-              placeholder="Select Location"
-              error={!!error}
-              helperText={error?.message}
-              onChange={(value) => {
-                field.onChange(value);
-                const selectedLoc = locations.find(l => l.name === value);
-                if (selectedLoc?.timezone) {
-                  setValue("employment.timezone", selectedLoc.timezone);
-                }
-              }}
-            />
-          )}
-        />
-      </div>
+  // Watch for role changes
+  React.useEffect(() => {
+    const subscription = control._formValues.employment?.roleId && setSelectedRoleId(String(control._formValues.employment.roleId));
+    return () => subscription;
+  }, [control._formValues.employment?.roleId, control]);
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-border/50 pt-4">
-        <Controller
-          name="employment.dateOfJoining"
-          control={control}
-          render={({ field, fieldState: { error } }) => (
-            <Input {...field} label="Joining Date" type="date" error={!!error} helperText={error?.message} className="rounded-xl" />
-          )}
-        />
-        <Controller
-          name="employment.workingHours.startTime"
-          control={control}
-          render={({ field }) => (
-            <Input {...field} label="Start Time" type="time" className="rounded-xl" />
-          )}
-        />
-        <Controller
-          name="employment.workingHours.endTime"
-          control={control}
-          render={({ field }) => (
-            <Input {...field} label="End Time" type="time" className="rounded-xl" />
-          )}
-        />
-      </div>
+  const isClient = isClientRole(selectedRoleId, roles);
 
+  return (
+    <Card variant="bordered" className="overflow-hidden border-success/10 shadow-lg sm:shadow-xl shadow-success/5 rounded-2xl sm:rounded-3xl">
+      <CardHeader className="bg-success/5 border-b border-success/10 p-3 sm:p-4 lg:p-6">
+        <CardTitle className="flex items-center gap-2 text-success text-sm sm:text-base lg:text-lg">
+          <Briefcase className="w-4 h-4 sm:w-5 sm:h-5" />
+          Career Details {isClient && <span className="ml-2 text-[10px] px-2 py-0.5 bg-info/20 text-info rounded-full">Client</span>}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 sm:p-4 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
+          <Controller
+            name="employment.roleId"
+            control={control}
+            render={({ field, fieldState: { error } }) => (
+              <FormSelect
+                {...field}
+                onChange={(value) => {
+                  field.onChange(value);
+                  setSelectedRoleId(value);
+                }}
+                label="Role"
+                required
+                options={roles.length > 0 ? roles.filter(r => r.isActive).map(r => ({ value: r._id || r.name, label: r.name })) : [
+                  { value: "employee", label: "Employee" },
+                  { value: "manager", label: "Manager" },
+                  { value: "hr", label: "HR" },
+                  { value: "admin", label: "Admin" },
+                  { value: "contractor", label: "Contractor" },
+                  { value: "client", label: "Client" }
+                ]}
+                error={!!error}
+                helperText={error?.message}
+              />
+            )}
+          />
 
-      <div className="space-y-2 sm:space-y-3">
-        <label className="block text-xs sm:text-sm font-bold text-foreground-tertiary uppercase tracking-wide sm:tracking-widest px-1">
-          Weekly Off
-        </label>
-        <div className="flex flex-wrap gap-2 sm:gap-3">
-          {WEEK_DAYS.map(({ label, value }) => (
-            <Controller
-              key={value}
-              name="employment.workingHours.weeklyOff"
-              control={control}
-              render={({ field }) => {
-                const selected = Array.isArray(field.value) ? field.value : [];
-                const isSelected = selected.includes(value);
+          {!isClient && (
+            <>
+              <Controller
+                name="employment.employmentType"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <FormSelect
+                    {...field}
+                    label="Contract Type"
+                    required
+                    options={[
+                      { value: "full-time", label: "Full-Time" },
+                      { value: "part-time", label: "Part-Time" },
+                      { value: "contract", label: "Contract" },
+                      { value: "intern", label: "Intern" },
+                    ]}
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
 
-                return (
-                  <Button
-                    type="button"
-                    variant={isSelected ? "default" : "outline"}
-                    onClick={() => {
-                      const updated = isSelected
-                        ? selected.filter((d) => d !== value)
-                        : [...selected, value];
-                      field.onChange(updated);
-                    }}
-                    className={cn(
-                      "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all border h-auto",
-                      isSelected
-                        ? "shadow-md shadow-primary/20"
-                        : "bg-surface border-border text-foreground hover:border-primary/50"
-                    )}
-                  >
-                    {label}
-                  </Button>
-                );
-              }}
-            />
-          ))}
+              <Controller
+                name="employment.reportingManager"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <FormSelect
+                    {...field}
+                    label="Reporting Manager"
+                    searchable
+                    searchTerm={managerSearch}
+                    onSearchChange={setManagerSearch}
+                    onScrollToBottom={onLoadMoreUsers}
+                    isLoadingMore={isUsersLoadingMore}
+                    options={[
+                      { value: "", label: "None (Top Level)" },
+                      ...users
+                        .filter(u => u._id !== currentUserId)
+                        .map(u => ({
+                          value: u._id,
+                          label: `${u.personalInfo.firstName} ${u.personalInfo.lastName} (${u.employment.designation})`
+                        }))
+                    ]}
+                    error={!!error}
+                    helperText={error?.message}
+                    placeholder="Select Manager"
+                  />
+                )}
+              />
+            </>
+          )}
         </div>
-      </div>
-    </CardContent>
-  </Card>
-);
+
+        {!isClient && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-border/50 pt-4">
+            <Controller
+              name="employment.department"
+              control={control}
+              render={({ field, fieldState: { error } }) => (
+                <FormSelect
+                  {...field}
+                  label="Department"
+                  required
+                  options={departments.filter(d => d.isActive).map(d => ({ value: d.name, label: d.name }))}
+                  placeholder="Select Department"
+                  error={!!error}
+                  helperText={error?.message}
+                />
+              )}
+            />
+            <Controller
+              name="employment.designation"
+              control={control}
+              render={({ field, fieldState: { error } }) => (
+                <FormSelect
+                  {...field}
+                  label="Designation"
+                  required
+                  options={designations.filter(d => d.isActive).map(d => ({ value: d.title || d.name || "Untitled", label: d.title || d.name || "Untitled" }))}
+                  placeholder="Select Designation"
+                  error={!!error}
+                  helperText={error?.message}
+                />
+              )}
+            />
+            <Controller
+              name="employment.location"
+              control={control}
+              render={({ field, fieldState: { error } }) => (
+                <FormSelect
+                  {...field}
+                  label="Work Location"
+                  options={locations.filter(l => l.isActive).map(l => ({ value: l.name, label: l.name }))}
+                  placeholder="Select Location"
+                  error={!!error}
+                  helperText={error?.message}
+                  onChange={(value) => {
+                    field.onChange(value);
+                    const selectedLoc = locations.find(l => l.name === value);
+                    if (selectedLoc?.timezone) {
+                      setValue("employment.timezone", selectedLoc.timezone);
+                    }
+                  }}
+                />
+              )}
+            />
+            <Controller
+              name="employment.timezone"
+              control={control}
+              render={({ field, fieldState: { error } }) => (
+                <FormSelect
+                  {...field}
+                  value={field.value || "Asia/Kolkata"}
+                  label="Timezone Override"
+                  placeholder="Select Timezone"
+                  options={[
+                    { value: "Asia/Kolkata", label: "India (IST)" },
+                    { value: "America/New_York", label: "USA (EST)" },
+                    { value: "America/Chicago", label: "USA (CST)" },
+                    { value: "America/Denver", label: "USA (MST)" },
+                    { value: "America/Los_Angeles", label: "USA (PST)" },
+                  ]}
+                  error={!!error}
+                  helperText={error?.message || "Override timezone for remote workers"}
+                />
+              )}
+            />
+          </div>
+        )}
+
+        {!isClient && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 border-t border-border/50 pt-4">
+              <Controller
+                name="employment.dateOfJoining"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="Joining Date"
+                    required
+                    type="date"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.uanNumber"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="UAN No (Optional)"
+                    placeholder="Enter UAN Number"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.esiNumber"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="ESI No (Optional)"
+                    placeholder="Enter ESI Number"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.bankAccountNo"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="Bank Account No"
+                    placeholder="Enter Bank Account No"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.bankName"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="Bank Name"
+                    placeholder="Enter Bank Name"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.workingHours.startTime"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    label="Start Time"
+                    type="time"
+                    className="rounded-xl"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.workingHours.endTime"
+                control={control}
+                render={({ field }) => (
+                  <Input
+                    {...field}
+                    label="End Time"
+                    type="time"
+                    className="rounded-xl"
+                  />
+                )}
+              />
+            </div>
+
+            <div className="space-y-2 sm:space-y-3">
+              <label className="block text-xs sm:text-sm font-bold text-foreground-tertiary uppercase tracking-wide sm:tracking-widest px-1">
+                Weekly Off
+              </label>
+
+              <div className="flex flex-wrap gap-2 sm:gap-3">
+                {WEEK_DAYS.map(({ label, value }) => (
+                  <Controller
+                    key={value}
+                    name="employment.workingHours.weeklyOff"
+                    control={control}
+                    render={({ field }) => {
+                      const selected = Array.isArray(field.value) ? field.value : [];
+                      const isSelected = selected.includes(value);
+
+                      return (
+                        <Button
+                          type="button"
+                          variant={isSelected ? "default" : "outline"}
+                          onClick={() => {
+                            const updated = isSelected
+                              ? selected.filter((d) => d !== value)
+                              : [...selected, value];
+                            field.onChange(updated);
+                          }}
+                          className={cn(
+                            "px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all border h-auto",
+                            isSelected
+                              ? "shadow-md shadow-primary/20"
+                              : "bg-surface border-border text-foreground hover:border-primary/50"
+                          )}
+                        >
+                          {label}
+                        </Button>
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const PermissionsCard: React.FC<CardProps> = ({ control }) => (
   <Card variant="bordered" className="overflow-hidden border-error/10 shadow-lg shadow-error/5 rounded-2xl sm:rounded-3xl">
@@ -594,11 +1024,6 @@ const PermissionsCard: React.FC<CardProps> = ({ control }) => (
     <CardContent className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
       {[
         { name: "isAdmin", label: "Administrator Status", color: "text-amber-600", borderColor: "border-amber-500/20" },
-        { name: "isHolidayApplicable", label: "Holiday Eligibility", color: "text-blue-600", borderColor: "border-blue-500/20" },
-        { name: "permissions.canApproveLeave", label: "Approve Leaves" },
-        { name: "permissions.canApproveReimbursement", label: "Approve Reimbursements" },
-        { name: "permissions.canManageSchedule", label: "Manage Schedules" },
-        { name: "permissions.canViewReports", label: "View Reports" },
       ].map((perm) => (
         <Controller
           key={perm.name}
@@ -650,15 +1075,10 @@ const SecurityIPCard: React.FC<CardProps & { ipInput: string; setIpInput: (v: st
 
           const addIP = () => {
             if (!ipInput.trim()) return;
-
-            if (!/^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(ipInput)) {
-              return;
-            }
-
+            if (!/^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(ipInput)) return;
             if (!currentValue.includes(ipInput)) {
               field.onChange([...currentValue, ipInput]);
             }
-
             setIpInput("");
           };
 
@@ -668,7 +1088,6 @@ const SecurityIPCard: React.FC<CardProps & { ipInput: string; setIpInput: (v: st
 
           return (
             <div>
-              {/* Input */}
               <Input
                 value={ipInput}
                 onChange={(e) => setIpInput(e.target.value)}
@@ -697,21 +1116,20 @@ const SecurityIPCard: React.FC<CardProps & { ipInput: string; setIpInput: (v: st
                 }
               />
 
-              {/* IP Tags */}
               {currentValue.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
                   {currentValue.map((ip) => (
                     <span
                       key={ip}
-                      className="flex items-center gap-2 px-3 py-1 text-sm rounded-xl bg-muted border"
+                      className="flex items-center gap-2 px-3 py-1 text-sm rounded-xl bg-muted border font-mono"
                     >
                       {ip}
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon"
-                        onClick={() => removeIP(ip ?? "")}
-                        className="text-red-500 hover:text-red-700 w-6 h-6 p-0"
+                        onClick={() => removeIP(ip)}
+                        className="text-error hover:text-error/80 w-5 h-5 p-0"
                       >
                         ×
                       </Button>
@@ -727,7 +1145,7 @@ const SecurityIPCard: React.FC<CardProps & { ipInput: string; setIpInput: (v: st
   </Card>
 );
 
-const LeaveCard: React.FC<LeaveCardProps> = ({ control, leaveTypes }) => (
+const LeaveCard: React.FC<LeaveCardProps> = ({ control }) => (
   <Card variant="bordered" className="overflow-hidden border-orange-500/10 shadow-lg shadow-orange-500/5 rounded-2xl sm:rounded-3xl">
     <CardHeader className="bg-orange-500/5 border-b border-orange-500/10 p-2 sm:p-3">
       <CardTitle className="flex items-center gap-2 text-orange-600 text-sm sm:text-base">
@@ -735,63 +1153,49 @@ const LeaveCard: React.FC<LeaveCardProps> = ({ control, leaveTypes }) => (
         Leave Credits
       </CardTitle>
     </CardHeader>
-    <CardContent className="p-3 sm:p-4">
-      <Controller
-        name="leaveBalance"
-        control={control}
-        render={({ field }) => {
-          const balances = field.value || {};
+    <CardContent className="p-3 sm:p-4 space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Controller
+          name="totalLeaveBalance"
+          control={control}
+          render={({ field, fieldState: { error } }) => (
+            <Input
+              {...field}
+              type="number"
+              label="Total Leave Balance"
+              placeholder="0"
+              min={0}
+              error={!!error}
+              helperText={error?.message}
+              className="rounded-xl"
+              onChange={(e) => field.onChange(Number(e.target.value))}
+            />
+          )}
+        />
+        <div className="flex flex-col">
+          <label className="text-[10px] sm:text-xs font-bold text-transparent uppercase tracking-widest mb-1.5 px-1 select-none" aria-hidden="true">
+            Spacer
+          </label>
+          <Controller
+            name="isPaidLeaveApplicable"
+            control={control}
+            render={({ field }) => (
+              <label className="flex items-center px-4 py-2.5 w-full rounded-xl bg-muted/30 border border-border/50 hover:bg-muted transition-colors cursor-pointer group h-[42px]">
+                <input
+                  type="checkbox"
+                  checked={field.value}
+                  onChange={(e) => field.onChange(e.target.checked)}
+                  className="w-4 h-4 rounded-md border-2 border-border text-primary focus:ring-primary/20 transition-all"
+                />
+                <span className="ml-3 text-sm font-bold text-foreground group-hover:text-primary transition-colors">
+                  Applicable for Paid Leave
+                </span>
+              </label>
+            )}
+          />
+        </div>
+      </div>
 
-          // Use leaveTypes if provided to ensure all active types are shown
-          // Fallback to keys in balances if leaveTypes not provided
-          const keysToRender = leaveTypes && leaveTypes.length > 0
-            ? leaveTypes.map(lt => lt.name)
-            : Object.keys(balances);
-
-          const getLabel = (codeOrName: string) => {
-            if (leaveTypes) {
-              const lt = leaveTypes.find(l => l.name === codeOrName || l.name.toLowerCase().trim() === codeOrName.toLowerCase().trim());
-              return lt ? lt.name.toUpperCase() : codeOrName.toUpperCase();
-            }
-            return codeOrName.toUpperCase();
-          };
-
-          if (keysToRender.length === 0) {
-            return (
-              <div className="text-center py-4 bg-muted/20 rounded-xl border border-dashed border-border">
-                <p className="text-[10px] font-black uppercase text-foreground-tertiary">No entitlements defined</p>
-              </div>
-            );
-          }
-
-          return (
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-              {keysToRender.map((key) => {
-                const lt = leaveTypes?.find(l => l.name === key || l.name.toLowerCase().trim() === key.toLowerCase().trim());
-                const defaultValue = lt?.defaultAmount ?? 0;
-
-                return (
-                  <div key={key} className="space-y-1">
-                    <label className="text-[10px] font-black uppercase text-foreground-tertiary tracking-widest px-1">
-                      {getLabel(key)}
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.5"
-                      value={balances[key] ?? defaultValue}
-                      onChange={(e) => {
-                        const newVal = parseFloat(e.target.value) || 0;
-                        field.onChange({ ...balances, [key]: newVal });
-                      }}
-                      className="rounded-xl h-[40px] text-sm"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          );
-        }}
-      />
     </CardContent>
   </Card>
 );
@@ -845,23 +1249,55 @@ const UserForm: React.FC<UserFormProps> = ({
   error,
   users = [],
   leaveTypes,
+  onSearchUsers,
+  onLoadMoreUsers,
+  isUsersLoadingMore,
+  onClearError,
 }) => {
   const isEditMode = !!initialValues?.employeeId;
   const [showPassword, setShowPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1);
   const [ipInput, setIpInput] = useState("");
-  const totalSteps = 3;
-
-  const steps = [
-    { title: "Identity & Personal" },
-    { title: "Employment" },
-    { title: "Access & Settings" },
-  ];
 
   const validationSchema = useMemo(() => {
+    const dynamicSchema = baseSchema.shape({
+      employment: yup.object({
+        roleId: yup.string().required("Role is required"),
+        department: yup.string().nullable().when('roleId', {
+          is: (val: string) => !isClientRole(val, roles || []),
+          then: (schema) => schema.required("Department is required"),
+          otherwise: (schema) => schema.nullable().notRequired()
+        }),
+        designation: yup.string().nullable().when('roleId', {
+          is: (val: string) => !isClientRole(val, roles || []),
+          then: (schema) => schema.required("Designation is required"),
+          otherwise: (schema) => schema.nullable().notRequired()
+        }),
+        dateOfJoining: yup.string().nullable().when('roleId', {
+          is: (val: string) => !isClientRole(val, roles || []),
+          then: (schema) => schema.required("Joining Date is required"),
+          otherwise: (schema) => schema.nullable().notRequired()
+        }),
+        employmentType: yup.string().nullable().when('roleId', {
+          is: (val: string) => !isClientRole(val, roles || []),
+          then: (schema) => schema.oneOf(["full-time", "part-time", "contract", "intern"], "Contract Type is required").required("Contract Type is required"),
+          otherwise: (schema) => schema.nullable().notRequired()
+        }),
+        reportingManager: yup.string().nullable(),
+        location: yup.string().nullable(),
+        timezone: yup.string().default("Asia/Kolkata"),
+        override_timezone: yup.string().nullable().default(null),
+        workingHours: yup.object({
+          startTime: yup.string().nullable(),
+          endTime: yup.string().nullable(),
+          weeklyOff: yup.array().of(yup.string().defined()).defined().default([]),
+        }),
+      }) as unknown as yup.ObjectSchema<UserFormValues['employment']>
+    });
+
     return isEditMode
-      ? baseSchema
-      : baseSchema.shape({
+      ? dynamicSchema
+      : dynamicSchema.shape({
         password: yup.string()
           .required("Password is required")
           .min(8, "Password must be at least 8 characters")
@@ -870,7 +1306,7 @@ const UserForm: React.FC<UserFormProps> = ({
           .matches(/[0-9]/, "Must contain at least one number")
           .matches(/[!@#$%^&*(),.?":{}|<>]/, "Must contain at least one special character"),
       });
-  }, [isEditMode]);
+  }, [isEditMode, roles]);
 
   const {
     control,
@@ -878,12 +1314,15 @@ const UserForm: React.FC<UserFormProps> = ({
     trigger,
     setValue,
     getValues,
+    watch,
   } = useForm<UserFormValues>({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    resolver: yupResolver(validationSchema) as Resolver<UserFormValues, any>,
+    mode: "onChange",
+    resolver: yupResolver(validationSchema) as unknown as Resolver<UserFormValues, object>,
     defaultValues: {
       isAdmin: initialValues?.isAdmin || false,
       isHolidayApplicable: initialValues?.isHolidayApplicable ?? true,
+      isPaidLeaveApplicable: initialValues?.isPaidLeaveApplicable ?? true,
+      totalLeaveBalance: initialValues?.totalLeaveBalance || 0,
       employeeId: initialValues?.employeeId || "",
       ...(!isEditMode && { password: "" }), // Only include password for new users
       username: initialValues?.username || "",
@@ -892,7 +1331,7 @@ const UserForm: React.FC<UserFormProps> = ({
         lastName: initialValues?.personalInfo?.lastName || "",
         email: initialValues?.personalInfo?.email || "",
         phone: initialValues?.personalInfo?.phone || "",
-        dateOfBirth: initialValues?.personalInfo?.dateOfBirth ? String(initialValues.personalInfo.dateOfBirth).split('T')[0] : "",
+        dateOfBirth: initialValues?.personalInfo?.dateOfBirth ? new Date(initialValues.personalInfo.dateOfBirth).toISOString().split('T')[0] : "",
         address: {
           street: initialValues?.personalInfo?.address?.street || "",
           city: initialValues?.personalInfo?.address?.city || "",
@@ -907,16 +1346,44 @@ const UserForm: React.FC<UserFormProps> = ({
         },
       },
       employment: {
-        role: initialValues?.employment?.role || "employee",
+        roleId: (() => {
+          const r = initialValues?.employment?.roleId || initialValues?.employment?.role;
+
+          // If roles are available, try to find a match by ID or Name
+          if (roles.length > 0) {
+            if (typeof r === "string") {
+              const found = roles.find(role => role._id === r || role.id === r || role.name === r);
+              if (found) return found._id;
+            } else if (r && typeof r === "object") {
+              const roleObj = r as { _id?: string; id?: string; name?: string };
+              const searchId = String(roleObj._id || roleObj.id || roleObj.name);
+              const found = roles.find(role => role._id === searchId || role.id === searchId || role.name === searchId);
+              if (found) return found._id;
+            }
+
+            // Default fallback if roles exist but no match or no initial value
+            const defaultRole = roles.find(role => role.name.toLowerCase() === "employee" || role.name.toLowerCase() === "client");
+            if (defaultRole) return defaultRole._id;
+          }
+
+          if (!r) return "";
+          if (typeof r === "string") return r;
+          const roleObj = r as { _id?: string; id?: string; name?: string };
+          return String(roleObj._id || roleObj.id || roleObj.name || "");
+        })(),
         department: initialValues?.employment?.department || "",
         designation: initialValues?.employment?.designation || "",
-        dateOfJoining: initialValues?.employment?.dateOfJoining ? String(initialValues.employment.dateOfJoining).split('T')[0] : "",
+        dateOfJoining: initialValues?.employment?.dateOfJoining ? new Date(initialValues.employment.dateOfJoining).toISOString().split('T')[0] : "",
+        uanNumber: initialValues?.employment?.uanNumber || "",
+        esiNumber: initialValues?.employment?.esiNumber || "",
+        bankAccountNo: initialValues?.employment?.bankAccountNo || "",
+        bankName: initialValues?.employment?.bankName || "",
         employmentType: initialValues?.employment?.employmentType || "full-time",
         reportingManager: (() => {
           const rm = initialValues?.employment?.reportingManager;
           if (!rm) return "";
           if (typeof rm === "string") return rm;
-          const rmObj = rm as Record<string, unknown>;
+          const rmObj = rm as { _id?: string; id?: string };
           if (rmObj._id) return String(rmObj._id);
           if (rmObj.id) return String(rmObj.id);
           return "";
@@ -941,7 +1408,22 @@ const UserForm: React.FC<UserFormProps> = ({
     },
   });
 
+   
+  const currentRoleId = watch("employment.roleId");
+  const isClient = useMemo(() => isClientRole(currentRoleId, roles || []), [currentRoleId, roles]);
+  const totalSteps = isClient ? 2 : 3;
 
+  const steps = useMemo(() => [
+    { title: "Identity & Personal" },
+    { title: "Employment" },
+    ...(isClient ? [] : [{ title: "Access & Settings" }]),
+  ], [isClient]);
+
+  useEffect(() => {
+    if (currentStep > totalSteps) {
+      setCurrentStep(totalSteps);
+    }
+  }, [totalSteps, currentStep]);
 
   const calculateLeaveBalance = useMemo(() => {
     if (!leaveTypes || leaveTypes.length === 0) {
@@ -949,6 +1431,12 @@ const UserForm: React.FC<UserFormProps> = ({
     }
     return getCalculatedLeaveBalance(leaveTypes, initialValues?.leaveBalance || {});
   }, [leaveTypes, initialValues]);
+
+  useEffect(() => {
+    if (!error || !onClearError) return;
+    const subscription = watch(() => onClearError());
+    return () => subscription.unsubscribe();
+  }, [error, onClearError, watch]);
 
   useEffect(() => {
     if (leaveTypes && leaveTypes.length > 0 && Object.keys(calculateLeaveBalance).length > 0) {
@@ -972,6 +1460,19 @@ const UserForm: React.FC<UserFormProps> = ({
     }
   }, [calculateLeaveBalance, leaveTypes, isEditMode, setValue, getValues]);
 
+  // Ensure roleId is resolved to an actual ID if it was initialized as a name
+  useEffect(() => {
+    if (roles && roles.length > 0) {
+      const currentRoleId = getValues("employment.roleId");
+      if (currentRoleId) {
+        const matchingRole = roles.find(r => r._id === currentRoleId || r.id === currentRoleId || r.name === currentRoleId);
+        if (matchingRole && matchingRole._id !== currentRoleId) {
+          setValue("employment.roleId", matchingRole._id);
+        }
+      }
+    }
+  }, [roles, setValue, getValues]);
+
   const getStepFields = (step: number): string[] => {
     switch (step) {
       case 1:
@@ -983,7 +1484,7 @@ const UserForm: React.FC<UserFormProps> = ({
         ];
       case 2:
         return [
-          "employment.role",
+          "employment.roleId",
           "employment.department",
           "employment.designation",
           "employment.dateOfJoining",
@@ -1011,22 +1512,79 @@ const UserForm: React.FC<UserFormProps> = ({
 
 
   const handleFormSubmit = (data: UserFormValues) => {
-    // 1. Convert simple dates to full ISO strings as expected by backend
-    const formattedData = {
-      ...data,
+    // Check if this is a Client user
+    const isClient = isClientRole(data.employment.roleId, roles);
+
+    const formattedData: (Partial<User> | Omit<User, 'id'>) & { password?: string } = {
+      isAdmin: data.isAdmin,
+      isHolidayApplicable: data.isHolidayApplicable,
+      isPaidLeaveApplicable: data.isPaidLeaveApplicable,
+      totalLeaveBalance: data.totalLeaveBalance,
+      employeeId: data.employeeId,
+      username: data.username,
+      password: data.password,
       personalInfo: {
         ...data.personalInfo,
-        dateOfBirth: data.personalInfo.dateOfBirth ? new Date(data.personalInfo.dateOfBirth).toISOString() : undefined
+        dateOfBirth: data.personalInfo.dateOfBirth ? new Date(data.personalInfo.dateOfBirth).toISOString() : undefined,
+        address: data.personalInfo.address,
+        emergencyContact: data.personalInfo.emergencyContact
       },
       employment: {
-        ...data.employment,
-        dateOfJoining: data.employment.dateOfJoining ? new Date(data.employment.dateOfJoining).toISOString() : undefined,
-        // Ensure reportingManager is null if empty string
-        reportingManager: data.employment.reportingManager || null
-      }
+        roleId: data.employment.roleId,
+        role: data.employment.roleId, // Normalized later by backend or mapUser
+        department: data.employment.department,
+        designation: data.employment.designation,
+        uanNumber: data.employment.uanNumber,
+        esiNumber: data.employment.esiNumber,
+        bankAccountNo: data.employment.bankAccountNo,
+        bankName: data.employment.bankName,
+        employmentType: data.employment.employmentType,
+        location: data.employment.location,
+        timezone: data.employment.timezone,
+        workingHours: data.employment.workingHours as User['employment']['workingHours'],
+        dateOfJoining: isClient ? "" : (data.employment.dateOfJoining ? new Date(data.employment.dateOfJoining).toISOString() : ""),
+        reportingManager: data.employment.reportingManager || undefined
+      },
+      userType: isClient ? "CLIENT" : "INTERNAL",
+      permissions: data.permissions,
+      leaveBalance: data.leaveBalance,
+      allowedIPs: data.allowedIPs,
+      isActive: data.isActive
     };
 
-    // 2. Prepare payload - remove root keys that should be nested if they accidentally exist
+    // 2. If client user, clear employee-specific fields
+    if (isClient) {
+      formattedData.employment = {
+        ...formattedData.employment,
+        department: "",
+        designation: "",
+        dateOfJoining: "",
+        employmentType: "full-time",
+        location: "",
+        reportingManager: undefined,
+        workingHours: {
+          startTime: "",
+          endTime: "",
+          weeklyOff: []
+        }
+      } as Partial<User>['employment'];
+      
+      formattedData.leaveBalance = {};
+      formattedData.allowedIPs = [];
+      formattedData.isAdmin = false;
+      formattedData.isHolidayApplicable = false;
+      formattedData.isPaidLeaveApplicable = false;
+      formattedData.totalLeaveBalance = 0;
+      formattedData.permissions = {
+        modules: [],
+        canApproveLeave: false,
+        canApproveReimbursement: false,
+        canManageSchedule: false,
+        canViewReports: false
+      };
+    }
+
+    // 3. Prepare payload - remove root keys that should be nested if they accidentally exist
     const submitData = isEditMode
       ? { ...formattedData, password: undefined, employeeId: undefined }
       : formattedData;
@@ -1120,7 +1678,7 @@ const UserForm: React.FC<UserFormProps> = ({
         {currentStep === 1 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             <div className="space-y-6">
-              <IdentityCard control={control} isEditMode={isEditMode} showPassword={showPassword} setShowPassword={setShowPassword} />
+              <IdentityCard control={control} isEditMode={isEditMode} showPassword={showPassword} setShowPassword={setShowPassword} userId={initialValues?._id || initialValues?.id} />
               <EmergencyCard control={control} />
             </div>
             <div className="space-y-6">
@@ -1141,9 +1699,12 @@ const UserForm: React.FC<UserFormProps> = ({
             users={users}
             currentUserId={initialValues?._id || initialValues?.id}
             setValue={setValue}
+            onSearchUsers={onSearchUsers}
+            onLoadMoreUsers={onLoadMoreUsers}
+            isUsersLoadingMore={isUsersLoadingMore}
           />
         )}
-        {currentStep === 3 && (
+        {currentStep === 3 && !isClient && (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             <div className="space-y-6">
               <PermissionsCard control={control} />
@@ -1164,10 +1725,10 @@ const UserForm: React.FC<UserFormProps> = ({
             {onCancel && (
               <Button
                 type="button"
-                variant="outline"
+                variant="secondaryOutline"
                 onClick={onCancel}
                 disabled={isLoading}
-                className="rounded-xl px-4 py-2 border-border text-foreground-secondary hover:bg-muted"
+                className="rounded-xl px-4 py-2 border-border text-foreground-secondary"
               >
                 Cancel
               </Button>
@@ -1205,7 +1766,11 @@ const UserForm: React.FC<UserFormProps> = ({
               )
             }
           >
-            {currentStep === totalSteps ? "Save Changes" : "Next"}
+            {currentStep === totalSteps 
+              ? (isEditMode 
+                  ? (isClient ? "Update Client" : "Update User") 
+                  : (isClient ? "Create Client" : "Create User")) 
+              : "Next"}
           </Button>
         </div>
       </ModalFooter>

@@ -4,6 +4,7 @@ import ReimbursementDetails from "./ReimbursementDetails";
 import { reimbursementService } from "../../services/reimbursementService";
 import { jest } from "@jest/globals";
 import userEvent from "@testing-library/user-event";
+import type { Reimbursement } from "../../types/reimbursement.types";
 
 jest.mock("../../services/reimbursementService");
 jest.mock("date-fns", () => ({
@@ -29,8 +30,8 @@ describe("ReimbursementDetails Page", () => {
     };
 
     beforeEach(() => {
-        (reimbursementService.getById as any).mockResolvedValue({ data: mockRecord });
-        (reimbursementService.updateStatus as any).mockResolvedValue({});
+        jest.mocked(reimbursementService.getById).mockResolvedValue({ success: true, data: mockRecord as unknown as Reimbursement });
+        jest.mocked(reimbursementService.updateStatus).mockResolvedValue({ success: true, data: mockRecord as unknown as Reimbursement });
     });
 
     it("renders loading state initially", () => {

@@ -8,6 +8,9 @@ import { designationService } from "../../services/designationService";
 import { roleService } from "../../services/roleService";
 import { leaveTypeService } from "../../services/leaveTypeService";
 import { jest } from "@jest/globals";
+import type { User, PaginatedUserResponse } from "../../types/user.types";
+import type { OfficeLocation, Department, Designation, PaginatedResponse, LeaveType } from "../../types/organization.types";
+import type { Role } from "../../types/role.types";
 
 jest.mock("../../services/userService");
 jest.mock("../../services/locationService");
@@ -26,13 +29,13 @@ describe("UserEdit Page", () => {
     };
 
     beforeEach(() => {
-        (userService.getById as any).mockResolvedValue(mockUser);
-        (locationService.getAll as any).mockResolvedValue({ data: [] });
-        (departmentService.getAll as any).mockResolvedValue({ data: [] });
-        (designationService.getAll as any).mockResolvedValue({ data: [] });
-        (userService.getAll as any).mockResolvedValue({ users: [] });
-        (leaveTypeService.getAll as any).mockResolvedValue({ data: [] });
-        (roleService.getAll as any).mockResolvedValue({ data: [] });
+        jest.mocked(userService.getById).mockResolvedValue(mockUser as unknown as User);
+        jest.mocked(locationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<OfficeLocation>);
+        jest.mocked(departmentService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Department>);
+        jest.mocked(designationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Designation>);
+        jest.mocked(userService.getAll).mockResolvedValue({ users: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedUserResponse);
+        jest.mocked(leaveTypeService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<LeaveType>);
+        jest.mocked(roleService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Role>);
     });
 
     it("renders loading state then user form", async () => {
@@ -53,7 +56,7 @@ describe("UserEdit Page", () => {
     });
 
     it("shows error message when user not found", async () => {
-        (userService.getById as any).mockResolvedValue(null);
+        jest.mocked(userService.getById).mockResolvedValue(null as unknown as User);
 
         render(
             <MemoryRouter initialEntries={["/users/999/edit"]}>

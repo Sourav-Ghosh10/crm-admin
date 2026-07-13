@@ -3,19 +3,23 @@ import { MemoryRouter } from "react-router-dom";
 import RolesList from "./RolesList";
 import { roleService } from "../../../services/roleService";
 import { jest } from "@jest/globals";
+import type { Role } from "../../../types/role.types";
+import type { PaginatedResponse } from "../../../types/organization.types";
 
 jest.mock("../../../services/roleService");
 
 describe("RolesList Page", () => {
     beforeEach(() => {
-        (roleService.getAll as any).mockResolvedValue({
+        jest.mocked(roleService.getAll).mockResolvedValue({
             data: [
-                { _id: "1", name: "Admin", description: "Full access", isActive: true, permissions: ["all"] },
-                { _id: "2", name: "User", description: "Basic access", isActive: true, permissions: [] }
+                { _id: "1", name: "Admin", description: "Full access", isActive: true, permissions: ["all"] } as unknown as Role,
+                { _id: "2", name: "User", description: "Basic access", isActive: true, permissions: [] } as unknown as Role
             ],
             total: 2,
-            totalPages: 1
-        });
+            totalPages: 1,
+            page: 1,
+            limit: 10
+        } as unknown as PaginatedResponse<Role>);
     });
 
     it("renders loading state initially", () => {

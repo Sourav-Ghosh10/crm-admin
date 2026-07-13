@@ -3,9 +3,8 @@ import {
     Plus,
     Edit,
     GitBranch,
-    CheckCircle2,
-    XCircle,
-    Trash2,
+    Archive,
+    RefreshCw,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -21,6 +20,8 @@ import FilterDropdown from "../../../components/common/Filter/FilterDropdown";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import Pagination from "../../../components/common/Pagination";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const DepartmentsList: React.FC = () => {
     const [departments, setDepartments] = useState<Department[]>([]);
@@ -44,13 +45,15 @@ const DepartmentsList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentDepartment, setCurrentDepartment] = useState<Partial<Department> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.DEPARTMENT_MANAGE);
+
     const fetchDepartments = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
             };
             const response = await departmentService.getAll(filters);
@@ -58,7 +61,7 @@ const DepartmentsList: React.FC = () => {
             setTotalPages(response.totalPages);
 
             // Only disable search if there's no data AND no active filters/search
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -87,40 +90,19 @@ const DepartmentsList: React.FC = () => {
 
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Department`,
-            message: `Are you sure you want to ${action} "${dept.name}"?`,
+            message: `Are you sure you want to ${action} "${dept.name}"? ${dept.isActive ? "This will archive the department." : ""}`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: dept.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await departmentService.update(dept._id, { isActive: !dept.isActive });
+                await departmentService.toggleStatus(dept._id, !dept.isActive);
                 fetchDepartments(page);
             } catch (error) {
                 console.error(`Failed to ${action} department: `, error);
 
                 const errorMessage = getErrorMessage(error, `Failed to ${action} department`);
-                alert(errorMessage);
-            }
-        }
-    };
-
-    const handleDelete = async (dept: Department) => {
-        const confirmed = await confirm({
-            title: 'Delete Department',
-            message: `Are you sure you want to PERMANENTLY delete "${dept.name}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
-
-        if (confirmed) {
-            try {
-                await departmentService.delete(dept._id);
-                fetchDepartments(page);
-            } catch (error) {
-                console.error(`Failed to delete department: `, error);
-
-                const errorMessage = getErrorMessage(error, "Failed to delete department");
                 alert(errorMessage);
             }
         }
@@ -236,19 +218,14 @@ const DepartmentsList: React.FC = () => {
                         )}
                         title={row.isActive ? "Deactivate" : "Activate"}
                     >
-                        {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Department"
-                    >
-                        <Trash2 className="w-4 h-4" />
+                        {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -271,35 +248,39 @@ const DepartmentsList: React.FC = () => {
                         Manage your organizational divisions and core teams.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Department
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Department
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="departments"
                         placeholder="Search departments..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <FilterDropdown
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest"
-                    options={[
-                        { value: "all", label: "All Status" },
-                        { value: "active", label: "Active Only" },
-                        { value: "inactive", label: "Inactive Only" },
-                    ]}
-                />
+                <div className="shrink-0 w-full lg:w-auto">
+                    <FilterDropdown
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest w-full lg:w-[200px]"
+                        options={[
+                            { value: "all", label: "All Status" },
+                            { value: "active", label: "Active Only" },
+                            { value: "inactive", label: "Inactive Only" },
+                        ]}
+                    />
+                </div>
             </div>
 
             <div className="bg-surface rounded-xl sm:rounded-xl border border-border/40 shadow-2xl shadow-primary/5 overflow-hidden relative min-h-[400px]">
@@ -310,7 +291,7 @@ const DepartmentsList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={departments}
                     className="border-none"
                     emptyState={
@@ -342,7 +323,7 @@ const DepartmentsList: React.FC = () => {
             <Modal
                 open={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
-                title={currentDepartment?._id ? "Adjust Division Parameters" : "Initialize Structural Division"}
+                title={currentDepartment?._id ? "Edit Department" : "Add Department"}
                 maxWidth="md"
             >
                 <DepartmentForm

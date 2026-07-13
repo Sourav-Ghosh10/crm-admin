@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
     User as UserIcon,
     Calendar,
     ChevronRight,
-    Search as SearchIcon,
     Briefcase
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
@@ -16,6 +15,7 @@ import { toast } from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDebounce } from "../../../hooks/useDebounce";
 import Avatar from "../../../components/common/Avatar";
+import { SearchInput } from "../../../components/common/Search/SearchInput";
 
 const LeaveBalances: React.FC = () => {
     const { userId } = useParams<{ userId: string }>();
@@ -25,11 +25,15 @@ const LeaveBalances: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [detailedBalances, setDetailedBalances] = useState<LeaveBalanceDetails[]>([]);
+    const [globalAvailableBalance, setGlobalAvailableBalance] = useState<number>(0);
+    const [totalLeaveBalance, setTotalLeaveBalance] = useState<number>(0);
+    const [isEditingGlobal, setIsEditingGlobal] = useState(false);
+    const [newTotalLeaveBalance, setNewTotalLeaveBalance] = useState<number>(0);
+    const [isSavingGlobal, setIsSavingGlobal] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [searching, setSearching] = useState(false);
     const [showResults, setShowResults] = useState(false);
 
-    // Fetch all leave types once
+    const searchContainerRef = useRef<HTMLDivElement>(null);
 
     const fetchUserBalance = useCallback(async (user: User) => {
         if (!user) return;
@@ -39,9 +43,12 @@ const LeaveBalances: React.FC = () => {
             const balances = data.balances || [];
 
             setDetailedBalances(balances);
+            setGlobalAvailableBalance(data.globalAvailableBalance || 0);
+            setTotalLeaveBalance(data.totalLeaveBalance || 0);
+            setNewTotalLeaveBalance(data.totalLeaveBalance || 0);
             setSelectedUser(user);
             setShowResults(false);
-            setSearchTerm("");
+            setSearchTerm(`${user.personalInfo.firstName} ${user.personalInfo.lastName}`);
 
             const targetId = user._id || user.id;
             // Update URL if not already there
@@ -72,24 +79,43 @@ const LeaveBalances: React.FC = () => {
         loadUserFromParam();
     }, [userId, selectedUser, fetchUserBalance]);
 
+    // Handle Escape key and outside clicks
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setShowResults(false);
+            }
+        };
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
+                setShowResults(false);
+            }
+        };
+
+        document.addEventListener("keydown", handleKeyDown);
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("keydown", handleKeyDown);
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, []);
+
     // Fetch users when debounced search changes
     useEffect(() => {
         const fetchUsers = async () => {
-            if (debouncedSearch.length < 2) {
+            if (debouncedSearch.trim().length < 2) {
                 setUsers([]);
                 setShowResults(false);
                 return;
             }
 
-            setSearching(true);
             try {
-                const response = await userService.getAll({ search: debouncedSearch, limit: 10 });
+                const response = await userService.getAll({ search: debouncedSearch.trim(), limit: 10 });
                 setUsers(response.users);
                 setShowResults(true);
             } catch (error) {
                 console.error("Failed to search users:", error);
-            } finally {
-                setSearching(false);
             }
         };
 
@@ -118,54 +144,57 @@ const LeaveBalances: React.FC = () => {
             </div>
 
             {/* User Selection Section */}
-            <div className="relative max-w-2xl mx-auto md:mx-0">
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none">
-                        <SearchIcon className="w-5 h-5 text-foreground-tertiary group-focus-within:text-primary transition-colors" />
-                    </div>
-                    <input
-                        type="text"
+            <div
+                ref={searchContainerRef}
+                className="relative z-50 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm max-w-2xl"
+            >
+                <div className="flex-1 w-full relative">
+                    <SearchInput
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(val) => {
+                            setSearchTerm(val);
+                            if (val.length < 2) setShowResults(false);
+                        }}
                         onKeyDown={handleKeyDown}
+                        onFocus={() => {
+                            if (searchTerm.length >= 2 && users.length > 0) {
+                                setShowResults(true);
+                            }
+                        }}
+                        searchKey="leave-balances-search"
                         placeholder="Search for an employee to manage..."
-                        className="w-full pl-12 pr-4 py-4 bg-surface border border-border/50 rounded-[2rem] focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm font-bold shadow-xl shadow-primary/5"
+                        inputClassName="py-6 rounded-[2rem]"
                     />
-                    {searching && (
-                        <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                            <div className="w-5 h-5 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+
+                    {showResults && users.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-3 bg-surface border border-border rounded-3xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 backdrop-blur-xl max-h-[400px] overflow-y-auto">
+                            {users.map((user) => (
+                                <button
+                                    key={user._id}
+                                    onClick={() => fetchUserBalance(user)}
+                                    className="w-full flex items-center gap-4 px-6 py-4 hover:bg-primary/5 transition-all group text-left border-b border-border/30 last:border-none"
+                                >
+                                    <Avatar
+                                        src={user.personalInfo.profilePicture}
+                                        firstName={user.personalInfo.firstName}
+                                        lastName={user.personalInfo.lastName}
+                                        size="lg"
+                                        className="rounded-2xl shadow-lg shadow-primary/20 shrink-0"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-black text-foreground group-hover:text-primary transition-colors truncate">
+                                            {user.personalInfo.firstName} {user.personalInfo.lastName}
+                                        </p>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-foreground-tertiary truncate">
+                                            {user.employment.designation} • {user.employment.department}
+                                        </p>
+                                    </div>
+                                    <ChevronRight className="w-5 h-5 text-foreground-tertiary group-hover:text-primary transition-transform group-hover:translate-x-1" />
+                                </button>
+                            ))}
                         </div>
                     )}
                 </div>
-
-                {showResults && users.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-3 bg-surface border border-border rounded-3xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200 backdrop-blur-xl max-h-[400px] overflow-y-auto">
-                        {users.map((user) => (
-                            <button
-                                key={user._id}
-                                onClick={() => fetchUserBalance(user)}
-                                className="w-full flex items-center gap-4 px-6 py-4 hover:bg-primary/5 transition-all group text-left border-b border-border/30 last:border-none"
-                            >
-                                <Avatar
-                                    src={user.personalInfo.profilePicture}
-                                    firstName={user.personalInfo.firstName}
-                                    lastName={user.personalInfo.lastName}
-                                    size="lg"
-                                    className="rounded-2xl shadow-lg shadow-primary/20 shrink-0"
-                                />
-                                <div className="flex-1 min-w-0">
-                                    <p className="font-black text-foreground group-hover:text-primary transition-colors truncate">
-                                        {user.personalInfo.firstName} {user.personalInfo.lastName}
-                                    </p>
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-foreground-tertiary truncate">
-                                        {user.employment.designation} • {user.employment.department}
-                                    </p>
-                                </div>
-                                <ChevronRight className="w-5 h-5 text-foreground-tertiary group-hover:text-primary transition-transform group-hover:translate-x-1" />
-                            </button>
-                        ))}
-                    </div>
-                )}
             </div>
 
             {loading ? (
@@ -223,7 +252,77 @@ const LeaveBalances: React.FC = () => {
                                     <CardTitle className="text-xl font-black tracking-tight uppercase">Employee Balances</CardTitle>
                                 </div>
                             </CardHeader>
-                            <CardContent className="p-0">
+                            <CardContent className="p-6">
+                                <div className="mb-8 p-6 bg-primary/5 border border-primary/20 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h4 className="text-lg font-black text-foreground">Global Shared Leave Pool</h4>
+                                        <p className="text-sm text-foreground-tertiary">All paid leave types draw from this shared balance.</p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="text-right">
+                                            <p className="text-[10px] font-black uppercase text-foreground-tertiary tracking-widest mb-1">Available</p>
+                                            <p className="text-2xl font-black text-primary">{globalAvailableBalance} Days</p>
+                                        </div>
+                                        <div className="w-px h-12 bg-border/50 hidden md:block" />
+                                        <div className="text-right flex items-center gap-3">
+                                            <div className="flex flex-col items-end">
+                                                <p className="text-[10px] font-black uppercase text-foreground-tertiary tracking-widest mb-1">Total Quota</p>
+                                                {isEditingGlobal ? (
+                                                    <input 
+                                                        type="number" 
+                                                        value={newTotalLeaveBalance}
+                                                        onChange={(e) => setNewTotalLeaveBalance(Number(e.target.value))}
+                                                        className="w-24 px-3 py-1 bg-surface border border-border rounded-lg text-foreground font-black text-lg text-right focus:outline-none focus:border-primary"
+                                                    />
+                                                ) : (
+                                                    <p className="text-2xl font-black text-foreground">{totalLeaveBalance} Days</p>
+                                                )}
+                                            </div>
+                                            {isEditingGlobal ? (
+                                                <div className="flex gap-2">
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (!selectedUser) return;
+                                                            setIsSavingGlobal(true);
+                                                            try {
+                                                                await leaveService.updateEmployeeBalance(selectedUser._id || selectedUser.id, {}, newTotalLeaveBalance);
+                                                                toast.success("Global balance updated successfully");
+                                                                fetchUserBalance(selectedUser);
+                                                                setIsEditingGlobal(false);
+                                                            } catch (err) {
+                                                                toast.error("Failed to update balance");
+                                                            } finally {
+                                                                setIsSavingGlobal(false);
+                                                            }
+                                                        }}
+                                                        disabled={isSavingGlobal}
+                                                        className="px-4 py-2 bg-primary text-primary-foreground text-sm font-bold rounded-lg hover:bg-primary/90"
+                                                    >
+                                                        {isSavingGlobal ? "..." : "Save"}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => {
+                                                            setIsEditingGlobal(false);
+                                                            setNewTotalLeaveBalance(totalLeaveBalance);
+                                                        }}
+                                                        disabled={isSavingGlobal}
+                                                        className="px-4 py-2 bg-muted text-foreground text-sm font-bold rounded-lg hover:bg-muted/80"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => setIsEditingGlobal(true)}
+                                                    className="px-4 py-2 bg-muted text-foreground text-sm font-bold rounded-lg hover:bg-muted/80"
+                                                >
+                                                    Edit
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="overflow-x-auto">
                                     <table className="w-full border-collapse">
                                         <thead>

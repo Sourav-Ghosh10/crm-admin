@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import DaySchedulePanel from "./DaySchedulePanel";
 import { jest } from "@jest/globals";
+import type { EmployeeRoster } from "../../types/schedule.types";
 
 // Mock date-fns to avoid timezone issues ensuring consistent parsing
 jest.mock("date-fns", () => {
@@ -12,7 +13,8 @@ jest.mock("date-fns", () => {
             if (fmt === "EEEE") return "Monday";
             if (fmt === "MMMM d, yyyy") return "January 1, 2024";
             if (fmt === "HH:mm") return "09:00"; // Mock time format
-            return (original as any).format(date, fmt);
+            const actualFormat = (original as { format: (d: Date, f: string) => string }).format;
+            return actualFormat(date, fmt);
         }
     };
 });
@@ -20,9 +22,9 @@ jest.mock("date-fns", () => {
 describe("DaySchedulePanel", () => {
     const mockDate = new Date("2024-01-01T00:00:00Z");
     const mockOnClose = jest.fn();
-    const mockOnEdit = jest.fn<any>().mockResolvedValue(undefined);
-    const mockOnDelete = jest.fn<any>().mockResolvedValue(undefined);
-    const mockOnAdd = jest.fn<any>().mockResolvedValue(undefined);
+    const mockOnEdit = jest.fn(() => Promise.resolve());
+    const mockOnDelete = jest.fn(() => Promise.resolve());
+    const mockOnAdd = jest.fn(() => Promise.resolve());
 
     const mockRosters = [
         {
@@ -40,7 +42,7 @@ describe("DaySchedulePanel", () => {
                 }
             }
         }
-    ] as any;
+    ] as unknown as EmployeeRoster[];
 
     it("renders nothing when closed or no date selected", () => {
         const { container } = render(
@@ -123,7 +125,7 @@ describe("DaySchedulePanel", () => {
                 Info: { firstName: "Jane", lastName: "Smith" },
                 shiftData: { "2024-01-01": { _id: "s2", shiftType: "day", startTime: ["10:00"], endTime: ["18:00"] } }
             }
-        ];
+        ] as unknown as EmployeeRoster[];
 
         render(
             <DaySchedulePanel

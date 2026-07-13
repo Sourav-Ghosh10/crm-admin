@@ -16,19 +16,23 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     const location = useLocation();
 
     useEffect(() => {
-        // Check if tokens exist in localStorage
-        const hasValidTokens = tokenStorage.getAccessToken() && tokenStorage.getRefreshToken();
+        const hasAccessToken = !!tokenStorage.getAccessToken();
+        const hasRefreshToken = !!tokenStorage.getRefreshToken();
         
-        // If isAuthenticated is true but no tokens exist, clear auth state and redirect
-        if (isAuthenticated && !hasValidTokens) {
-            tokenStorage.clearTokens();
-            return; // Will trigger redirect below
-        }
-
+        console.log('[ProtectedRoute] Check:', { 
+            isAuthenticated, 
+            isInitialized, 
+            userType: user?.userType,
+            hasAccessToken,
+            hasRefreshToken,
+            pathname: location.pathname 
+        });
+        
         if (isAuthenticated && !user && !isInitialized) {
+            console.log('[ProtectedRoute] Authenticated but no user data. Fetching current user...');
             dispatch(fetchCurrentUser());
         }
-    }, [isAuthenticated, user, isInitialized, dispatch]);
+    }, [isAuthenticated, user, isInitialized, dispatch, location.pathname]);
 
     // If authenticated but session not yet restored from token, show loading
     if (isAuthenticated && !isInitialized) {
@@ -38,6 +42,15 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     if (!isAuthenticated) {
         // Redirect to login page with the return url
         return <Navigate to="/login" state={{ from: location }} replace />;
+    }
+
+    // If user is authenticated and initialized, check if they are a CLIENT user
+    if (isAuthenticated && isInitialized && user && user.userType === 'CLIENT') {
+        // CLIENT users should not access the admin portal, redirect to client portal
+        // But only if they are not already accessing a portal route
+        if (!location.pathname.startsWith('/portal')) {
+            return <Navigate to="/portal" replace />;
+        }
     }
 
     return children ? <>{children}</> : <Outlet />;

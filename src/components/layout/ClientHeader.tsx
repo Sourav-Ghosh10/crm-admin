@@ -1,13 +1,17 @@
 import React from "react";
-import { LogOut, LayoutDashboard, Users } from "lucide-react";
+import { LogOut, LayoutDashboard, Users, HelpCircle } from "lucide-react";
 import Button from "../common/Button";
 import Avatar from "../common/Avatar";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { logout } from "../../store/slices/authSlice";
 import { useNavigate } from "react-router-dom";
-import logoStatic from "../../assets/icon.png";
+import logoStatic from "../../assets/codecit-logo.png";
 
-const ClientHeader: React.FC = () => {
+interface ClientHeaderProps {
+    onSupportClick?: () => void;
+}
+
+const ClientHeader: React.FC<ClientHeaderProps> = ({ onSupportClick }) => {
     const navigate = useNavigate();
     const dispatch = useAppDispatch();
     const { user } = useAppSelector((state) => state.auth);
@@ -26,12 +30,12 @@ const ClientHeader: React.FC = () => {
                 <div className="flex items-center gap-4">
                     <img
                         src={logoStatic}
-                        alt="Codec IT"
+                        alt="CodecIT"
                         className="w-10 h-10 rounded-xl shadow-lg shadow-primary/10"
                     />
                     <div>
                         <h1 className="text-sm font-black text-foreground uppercase tracking-tighter leading-none">
-                            Codec IT <span className="text-primary">Portal</span>
+                            CodecIT <span className="text-primary">Portal</span>
                         </h1>
                         <p className="text-[10px] font-bold text-foreground-tertiary uppercase tracking-widest mt-1">
                             Read-Only Performance Monitor
@@ -41,14 +45,27 @@ const ClientHeader: React.FC = () => {
 
                 <div className="flex items-center gap-6">
                     <div className="hidden md:flex items-center gap-6 mr-6 border-r border-border pr-6">
-                        <div className="flex items-center gap-2 text-primary">
+                        <div 
+                            onClick={() => document.getElementById('analytics-section')?.scrollIntoView({ behavior: 'smooth' })}
+                            className="flex items-center gap-2 text-primary cursor-pointer hover:opacity-80 transition-all"
+                        >
                             <LayoutDashboard className="w-4 h-4" />
                             <span className="text-[10px] font-black uppercase tracking-widest">Analytics</span>
                         </div>
-                        <div className="flex items-center gap-2 text-foreground-tertiary hover:text-foreground cursor-pointer transition-colors">
+                        <div 
+                            onClick={() => document.getElementById('resources-section')?.scrollIntoView({ behavior: 'smooth' })}
+                            className="flex items-center gap-2 text-foreground-tertiary hover:text-foreground cursor-pointer transition-colors"
+                        >
                             <Users className="w-4 h-4" />
                             <span className="text-[10px] font-black uppercase tracking-widest">Resources</span>
                         </div>
+                        <button 
+                            onClick={onSupportClick}
+                            className="flex items-center gap-2 text-foreground-tertiary hover:text-primary cursor-pointer transition-colors bg-transparent border-none p-0 h-auto"
+                        >
+                            <HelpCircle className="w-4 h-4" />
+                            <span className="text-[10px] font-black uppercase tracking-widest">Support</span>
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-4">

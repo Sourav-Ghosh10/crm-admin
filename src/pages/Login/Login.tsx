@@ -7,8 +7,10 @@ import { Eye, EyeOff, AlertCircle, Mail, Lock, Loader2 } from "lucide-react";
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
 import { login, loginWithGoogle, clearError } from "../../store/slices/authSlice";
+import { tokenStorage } from "../../services/api";
 import { cn } from "../../lib/utils";
-import logoStatic from "../../assets/icon.png";
+// import logoAnimated from "../../assets/pulse-ops-logo-animated.mp4";
+import logoStatic from "../../assets/codecit-logo.png";
 import Button from "../../components/common/Button";
 
 const loginSchema = yup.object({
@@ -31,11 +33,23 @@ const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
-  const { isLoading, error, isAuthenticated } = useAppSelector(
+  const { isLoading, error, isAuthenticated, user } = useAppSelector(
     (state) => state.auth,
   );
   const [showPassword, setShowPassword] = useState(false);
-  const [logoutMessage, setLogoutMessage] = useState<string | null>(null);
+  const hasStoredTokens = !!(
+    tokenStorage.getAccessToken() && tokenStorage.getRefreshToken()
+  );
+  const [logoutMessage] = useState<string | null>(() => {
+    const reason = sessionStorage.getItem("logoutReason");
+    const message = sessionStorage.getItem("logoutMessage");
+    return reason && message ? message : null;
+  });
+
+  useEffect(() => {
+    sessionStorage.removeItem("logoutReason");
+    sessionStorage.removeItem("logoutMessage");
+  }, []);
 
   const {
     control,
@@ -49,40 +63,33 @@ const Login: React.FC = () => {
     defaultValues: {
       email: "",
       password: "",
-      checked: false,
-      // favourite: false,
-      // admin: false,
-      // rememberMe: false,
+      checked: false,      
     },
   });
 
   /* Removed useGoogleLogin hook */
 
   useEffect(() => {
-    if (isAuthenticated) {
-      const from =
-        (location.state as { from?: { pathname: string } })?.from?.pathname ||
-        "/";
-      navigate(from, { replace: true });
+    if (isAuthenticated || hasStoredTokens) {
+      const fromPath =
+        (location.state as { from?: { pathname?: string } })?.from?.pathname;
+      const fallbackPath = user?.userType === "CLIENT" ? "/portal" : "/";
+      const normalizePath = (path: string) =>
+        path.length > 1 ? path.replace(/\/+$/, "") : path;
+      const normalizedFromPath = fromPath ? normalizePath(fromPath) : undefined;
+      const isAuthRoute = (path: string) =>
+        /^\/(login|forgot-password|reset-password)(\/|$)/.test(path);
+      const targetPath =
+        normalizedFromPath && !isAuthRoute(normalizedFromPath)
+          ? normalizedFromPath
+          : fallbackPath;
+
+      navigate(targetPath, { replace: true });
     }
-  }, [isAuthenticated, navigate, location.state]);
+  }, [isAuthenticated, hasStoredTokens, navigate, location.state, user?.userType]);
 
 
-  // Check for logout reason on mount (e.g., session invalidated on another device)
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  useEffect(() => {
-    // Only clear error when user successfully logs in and navigates away
-    // Don't clear on component mount - preserve error from previous failed attempts
 
-    // Check for logout reason (e.g., session invalidated on another device)
-    const reason = sessionStorage.getItem("logoutReason");
-    const message = sessionStorage.getItem("logoutMessage");
-    if (reason && message) {
-      setLogoutMessage(message);
-      sessionStorage.removeItem("logoutReason");
-      sessionStorage.removeItem("logoutMessage");
-    }
-  }, []);
 
   // Load saved email if exists
   useEffect(() => {
@@ -112,7 +119,7 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <main id="main-content" className="min-h-screen flex">
       {/* Left side - Branding with Animated Logo */}
       <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary via-primary-dark to-primary-dark relative overflow-hidden">
         {/* Background Pattern */}
@@ -125,17 +132,18 @@ const Login: React.FC = () => {
         {/* Content */}
         <div className="relative z-10 flex flex-col justify-center items-center w-full p-12 text-white">
           <div className="max-w-md text-center">
-            {/* Static Logo */}
+            {/* Animated Logo */}
             <div className="mb-8">
-              <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2 flex items-center justify-center">
+              <div className="w-40 h-40 mx-auto mb-6 rounded-3xl overflow-hidden bg-white/10 backdrop-blur-sm p-2">
+                
                 <img
                   src={logoStatic}
-                  alt="Codec IT Logo"
-                  className="w-full h-full object-contain rounded-2xl"
+                  alt="CodecIT Logo"
+                  className="w-full h-full object-cover"
                 />
               </div>
-              <h1 className="text-4xl font-bold mb-2">Codec IT</h1>
-              <p className="text-white/80 text-lg">Human Resource Management</p>
+              <h1 className="text-4xl font-bold mb-2">CodecIT</h1>
+              <h2 className="text-white/80 text-lg">Human Resource Management</h2>
             </div>
 
             {/* Features */}
@@ -224,11 +232,12 @@ const Login: React.FC = () => {
             <div className="w-24 h-24 mx-auto mb-4 rounded-2xl overflow-hidden shadow-lg">
               <img
                 src={logoStatic}
-                alt="Codec IT Logo"
-                className="w-full h-full object-contain"
+                alt="CodecIT Logo"
+                fetchPriority="high"
+                className="w-full h-full object-cover"
               />
             </div>
-            <h1 className="text-2xl font-bold text-primary">Codec IT</h1>
+            <div className="text-2xl font-bold text-primary">CodecIT</div>
           </div>
 
           {/* Welcome Text */}
@@ -348,6 +357,7 @@ const Login: React.FC = () => {
                     <Button
                       type="button"
                       variant="ghost"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                       size="icon"
                       onClick={() => setShowPassword(!showPassword)}
                       className="absolute inset-y-0 right-0 pr-4 flex items-center text-foreground-tertiary hover:text-foreground transition-colors h-auto w-auto"
@@ -372,14 +382,14 @@ const Login: React.FC = () => {
             {/* Remember Me & Forgot Password */}
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input
+                {/* <input
                   type="checkbox"
                   // {...register("rememberMe")}
                   className="w-4 h-4 rounded border-border text-primary focus:ring-primary focus:ring-offset-0"
                 />
                 <span className="text-sm text-foreground-secondary">
                   Remember me
-                </span>
+                </span> */}
               </label>
               <Link
                 to="/forgot-password"
@@ -457,7 +467,7 @@ const Login: React.FC = () => {
                   fill="#EA4335"
                 />
               </svg>
-              Sign in with Google
+              Sign In with Google
             </Button>
           </form>
 
@@ -484,12 +494,12 @@ const Login: React.FC = () => {
 
           {/* Footer */}
           <p className="mt-8 text-center text-sm text-foreground-tertiary">
-            &copy; {new Date().getFullYear()} Codec IT. All rights reserved.
+            &copy; {new Date().getFullYear()} CodecIT. All rights reserved.
           </p>
         </div>
       </div>
-    </div>
-  );
+    </main>
+    );
 };
 
 export default Login;

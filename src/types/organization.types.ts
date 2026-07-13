@@ -15,6 +15,7 @@ export interface OfficeLocation {
     };
     isHeadquarters: boolean;
     isActive: boolean;
+    deletedAt?: string | null;
     timezone: string;
     createdAt?: string;
     updatedAt?: string;
@@ -27,6 +28,7 @@ export interface Department {
     description?: string;
     employeeCount?: number;
     isActive: boolean;
+    deletedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -41,6 +43,7 @@ export interface Designation {
     } | string;
     description?: string;
     isActive: boolean;
+    deletedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
     employeeCount?: number;
@@ -84,6 +87,7 @@ export interface Holiday {
     description?: string;
     isRecurring: boolean; // Whether it repeats annually
     isActive: boolean;
+    deletedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -123,12 +127,14 @@ export interface LeaveType {
     code: string;
     description?: string;
     isPaid: boolean;
+    allowPastDates?: boolean;
     defaultAmount: number;
     applicableDepartments: string[]; // List of department names or ['all']
     applicableDesignations: string[]; // List of designation names or ['all']
     maxCarryForward: number;
     resetFrequency: 'monthly' | 'yearly';
     isActive: boolean;
+    deletedAt?: string | null;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -138,6 +144,7 @@ export interface LeaveTypeInput {
     code: string;
     description?: string;
     isPaid: boolean;
+    allowPastDates?: boolean;
     defaultAmount: number;
     applicableDepartments: string[];
     applicableDesignations: string[];
@@ -145,4 +152,27 @@ export interface LeaveTypeInput {
     resetFrequency: 'monthly' | 'yearly';
     isActive: boolean;
 }
+
+export interface BreakType {
+    _id: string;
+    name: string;
+    code: string;
+    description?: string;
+    maxDuration: number;
+    isPaid: boolean;
+    isActive: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+}
+
+export interface BreakTypeInput {
+    name: string;
+    code: string;
+    description?: string;
+    maxDuration: number;
+    isPaid: boolean;
+    isActive: boolean;
+}
+
+
 

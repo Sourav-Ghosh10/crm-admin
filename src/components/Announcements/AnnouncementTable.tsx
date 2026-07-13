@@ -5,7 +5,8 @@ import {
     Bell,
     Edit2,
     Clock,
-    CheckCircle2
+    CheckCircle2,
+    AlertTriangle
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "../../lib/utils";
@@ -16,11 +17,15 @@ import type {
     Announcement,
     AnnouncementPriority
 } from "../../types/announcement.types";
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
 
 interface AnnouncementTableProps {
     announcements: Announcement[];
     isLoading: boolean;
     searchTerm: string;
+    priorityFilter?: string;
+    categoryFilter?: string;
     onEdit: (announcement: Announcement) => void;
     onDelete: (announcement: Announcement) => void;
 }
@@ -60,6 +65,8 @@ const AnnouncementTable: React.FC<AnnouncementTableProps> = ({
     announcements,
     isLoading,
     searchTerm,
+    priorityFilter = "all",
+    categoryFilter = "all",
     onEdit,
     onDelete
 }) => {
@@ -106,6 +113,10 @@ const AnnouncementTable: React.FC<AnnouncementTableProps> = ({
             }, 300);
         }, 300);
     };
+
+    // Permissions
+    const { hasPermission: canEdit } = usePermissions(PERMISSIONS.ANNOUNCEMENT_EDIT);
+    const { hasPermission: canDelete } = usePermissions(PERMISSIONS.ANNOUNCEMENT_DELETE);
 
     const columns: Column<Announcement>[] = [
         {
@@ -186,17 +197,39 @@ const AnnouncementTable: React.FC<AnnouncementTableProps> = ({
             _id: "status",
             label: "Status",
             format: (_: unknown, row: Announcement) => {
-                const isScheduled = row.publishDate && new Date(row.publishDate) > new Date();
+                const now = new Date();
+                const startDate = row.publishDate ? new Date(row.publishDate) : null;
+                const endDate = (row.expiresAt || row.expiryDate) ? new Date((row.expiresAt || row.expiryDate) as string) : null;
+
+                let statusLabel = "Published";
+                let variant = "success";
+                let Icon = CheckCircle2;
+
+                if (startDate && startDate > now) {
+                    statusLabel = "Upcoming";
+                    variant = "warning";
+                    Icon = Clock;
+                } else if (endDate && endDate < now) {
+                    status = "expired";
+                    statusLabel = "Expired";
+                    variant = "error";
+                    Icon = AlertTriangle; // Need to import this or use another icon
+                } else {
+                    statusLabel = "Live";
+                    variant = "success";
+                    Icon = CheckCircle2;
+                }
+
                 return (
                     <div className="flex flex-col">
                         <span className={cn(
                             "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border w-fit flex items-center gap-1.5",
-                            isScheduled
-                                ? "bg-warning/10 text-warning border-warning/20"
-                                : "bg-success/10 text-success border-success/20"
+                            variant === "warning" && "bg-warning/10 text-warning border-warning/20",
+                            variant === "success" && "bg-success/10 text-success border-success/20",
+                            variant === "error" && "bg-error/10 text-error border-error/20"
                         )}>
-                            {isScheduled ? <Clock className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                            {isScheduled ? "Scheduled" : "Published"}
+                            <Icon className="w-3 h-3" />
+                            {statusLabel}
                         </span>
                     </div>
                 );
@@ -240,28 +273,32 @@ const AnnouncementTable: React.FC<AnnouncementTableProps> = ({
             align: "right" as const,
             format: (_: unknown, row: Announcement) => (
                 <div className="flex items-center justify-end gap-1">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(row);
-                        }}
-                        className="w-8 h-8 rounded-lg text-[#10b981] hover:bg-[#10b981]/10"
-                    >
-                        <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(row);
-                        }}
-                        className="w-8 h-8 rounded-lg text-[#ef4444] hover:bg-[#ef4444]/10"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {canEdit && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(row);
+                            }}
+                            className="w-8 h-8 rounded-lg text-[#10b981] hover:bg-[#10b981]/10"
+                        >
+                            <Edit2 className="w-4 h-4" />
+                        </Button>
+                    )}
+                    {canDelete && (
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(row);
+                            }}
+                            className="w-8 h-8 rounded-lg text-[#ef4444] hover:bg-[#ef4444]/10"
+                        >
+                            <Trash2 className="w-4 h-4" />
+                        </Button>
+                    )}
                 </div>
             )
         }
@@ -284,7 +321,11 @@ const AnnouncementTable: React.FC<AnnouncementTableProps> = ({
                     emptyState={
                         <EmptyState
                             title="No Announcements"
-                            description={searchTerm ? `No results for "${searchTerm}"` : "Create your first announcement to get started."}
+                            description={
+                                searchTerm || priorityFilter !== "all" || categoryFilter !== "all"
+                                    ? `No results for your current filters and search.`
+                                    : "Create your first announcement to get started."
+                            }
                             icon={<Bell className="w-12 h-12 text-primary/20" />}
                             className="py-20"
                         />

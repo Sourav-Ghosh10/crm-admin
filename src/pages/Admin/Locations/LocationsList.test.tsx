@@ -3,12 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import LocationsList from "./LocationsList";
 import { locationService } from "../../../services/locationService";
 import { jest } from "@jest/globals";
+import type { OfficeLocation, PaginatedResponse } from "../../../types/organization.types";
 
 jest.mock("../../../services/locationService");
 
 describe("LocationsList Page", () => {
     beforeEach(() => {
-        (locationService.getAll as any).mockResolvedValue({
+        jest.mocked(locationService.getAll).mockResolvedValue({
             data: [
                 {
                     _id: "1",
@@ -30,8 +31,10 @@ describe("LocationsList Page", () => {
                 }
             ],
             total: 2,
-            totalPages: 1
-        });
+            totalPages: 1,
+            page: 1,
+            limit: 10
+        } as unknown as PaginatedResponse<OfficeLocation>);
     });
 
     it("renders loading state initially", () => {

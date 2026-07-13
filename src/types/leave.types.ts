@@ -1,6 +1,14 @@
 export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 export type LeaveType = string;
 
+export interface LeaveAttachment {
+    fileName: string;
+    fileUrl: string;
+    s3Key?: string;
+    _id?: string;
+    id?: string;
+}
+
 export interface LeaveRequest {
     _id: string;
     employeeId: string | {
@@ -32,7 +40,7 @@ export interface LeaveRequest {
     halfDay: boolean;
     reason: string;
     status: LeaveStatus;
-    attachments: string[];
+    attachments: (string | LeaveAttachment)[];
     createdAt: string;
     updatedAt: string;
     approvedBy?: string;
@@ -56,4 +64,6 @@ export interface EmployeeLeaveBalanceResponse {
     name: string;
     department: string;
     balances: LeaveBalanceDetails[];
+    globalAvailableBalance?: number;
+    totalLeaveBalance?: number;
 }

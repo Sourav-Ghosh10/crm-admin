@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { Download, ArrowLeft, ArrowRight } from "lucide-react";
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths } from "date-fns";
+import { format, eachDayOfInterval, addMonths, subMonths } from "date-fns";
 import { attendanceService } from "../../../services/attendanceService";
 import type { Attendance } from "../../../types/attendance.types";
 import Button from "../../../components/common/Button";
@@ -8,17 +8,38 @@ import Button from "../../../components/common/Button";
 import { Link } from "react-router-dom";
 import { cn } from "../../../lib/utils";
 import { reportService } from "../../../services/reportService";
+import systemSettingsService from "../../../services/systemSettingsService";
+import { getPayrollCycleInterval } from "../../../utils/payrollCycleUtils";
 
 const MonthlyAttendanceReport: React.FC = () => {
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [records, setRecords] = useState<Attendance[]>([]);
     const [loading, setLoading] = useState(true);
+    const [cycleSettings, setCycleSettings] = useState({ startDay: 1, endDay: 31 });
+
+    useEffect(() => {
+        const fetchCycle = async () => {
+            try {
+                const res = await systemSettingsService.getSettingByKey("payroll_cycle_settings").catch(() => null);
+                if (res && res.value) {
+                    setCycleSettings({
+                        startDay: Number(res.value.startDay || 1),
+                        endDay: Number(res.value.endDay || 31)
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to fetch payroll settings", err);
+            }
+        };
+        fetchCycle();
+    }, []);
 
     const fetchRecords = useCallback(async () => {
         try {
             setLoading(true);
-            const start = startOfMonth(currentMonth).toISOString();
-            const end = endOfMonth(currentMonth).toISOString();
+            const interval = getPayrollCycleInterval(currentMonth, cycleSettings);
+            const start = interval.startDate.toISOString();
+            const end = interval.endDate.toISOString();
 
             const resp = await attendanceService.getAll({
                 startDate: start,
@@ -31,7 +52,7 @@ const MonthlyAttendanceReport: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [currentMonth]);
+    }, [currentMonth, cycleSettings]);
 
     useEffect(() => {
         fetchRecords();
@@ -42,11 +63,12 @@ const MonthlyAttendanceReport: React.FC = () => {
 
     const handleExport = async (format: 'pdf' | 'csv') => {
         try {
+            const interval = getPayrollCycleInterval(currentMonth, cycleSettings);
             await reportService.generateReport({
                 type: 'attendance',
                 format,
-                startDate: startOfMonth(currentMonth).toISOString().split('T')[0],
-                endDate: endOfMonth(currentMonth).toISOString().split('T')[0]
+                startDate: interval.startDate.toISOString().split('T')[0],
+                endDate: interval.endDate.toISOString().split('T')[0]
             });
         } catch (err) {
             console.error("Export failed:", err);
@@ -58,9 +80,11 @@ const MonthlyAttendanceReport: React.FC = () => {
         const map = new Map<string, { name: string, empId: string, days: Record<string, string> }>();
 
         records.forEach(rec => {
-            const empId = (rec.employeeId as any)?._id || (rec.employeeId as any)?.id || "unknown";
-            const name = rec.name || (rec.employeeId as any)?.personalInfo?.firstName + " " + (rec.employeeId as any)?.personalInfo?.lastName;
-            const employeeId = (rec.employeeId as any)?.employeeId || "N/A";
+            const empId = rec.employeeId?._id || "unknown";
+            const firstName = rec.employeeId?.personalInfo?.firstName || "";
+            const lastName = rec.employeeId?.personalInfo?.lastName || "";
+            const name = rec.name || `${firstName} ${lastName}`.trim();
+            const employeeId = rec.employeeId?._id || "N/A";
             const dateStr = format(new Date(rec.date), "yyyy-MM-dd");
 
             if (!map.has(empId)) {
@@ -72,10 +96,13 @@ const MonthlyAttendanceReport: React.FC = () => {
         return Array.from(map.values());
     }, [records]);
 
-    const daysInMonth = eachDayOfInterval({
-        start: startOfMonth(currentMonth),
-        end: endOfMonth(currentMonth)
-    });
+    const daysInMonth = React.useMemo(() => {
+        const interval = getPayrollCycleInterval(currentMonth, cycleSettings);
+        return eachDayOfInterval({
+            start: interval.startDate,
+            end: interval.endDate
+        });
+    }, [currentMonth, cycleSettings]);
 
     const getStatusIcon = (status?: string) => {
         if (!status) return <span className="text-muted-foreground/20 text-[8px]">•</span>;

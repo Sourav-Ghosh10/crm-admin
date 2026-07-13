@@ -4,12 +4,18 @@ import { type Announcement } from "../../types/announcement.types";
 import { departmentService } from "../../services/departmentService";
 import { locationService } from "../../services/locationService";
 import { announcementService } from "../../services/announcementService";
+import type { CreateAnnouncementDto } from "../../types/announcement.types";
 import { getErrorMessage } from "../../utils/errorHandling";
 import LoadingSpinner from "../../components/common/LoadingSpinner";
 import BackButton from "../../components/common/BackButton";
 import Button from "../../components/common/Button";
 import AnnouncementForm from "../../components/Announcements/AnnouncementForm";
 import type { Department, OfficeLocation } from "../../types/organization.types";
+
+type AnnouncementFormValues = CreateAnnouncementDto & { 
+    publishTime?: string;
+    deadlineTime?: string;
+};
 
 const AnnouncementFormPage: React.FC = () => {
     const navigate = useNavigate();
@@ -51,8 +57,8 @@ const AnnouncementFormPage: React.FC = () => {
             setIsLoadingData(true);
             try {
                 const [deptRes, locRes] = await Promise.all([
-                    departmentService.getAll({ limit: 100 }),
-                    locationService.getAll({ limit: 100 })
+                    departmentService.getAll({ limit: 100, isActive: true }),
+                    locationService.getAll({ limit: 100, isActive: true })
                 ]);
                 const depts = deptRes.data.map((d: Department) => ({ value: d._id || d.id, label: d.name }));
                 const locs = locRes.data.map((l: OfficeLocation) => ({ value: l._id || l.id, label: l.name }));
@@ -84,30 +90,30 @@ const AnnouncementFormPage: React.FC = () => {
         return new Date(y, m - 1, d, h, min, 0, 0).toISOString();
     };
 
-    const onSubmit = async (data: any) => {
+    const onSubmit = async (data: AnnouncementFormValues) => {
         try {
             setIsLoading(true);
             setError(null);
 
-            const { targetAudience: _ignored, publishTime, deadlineTime, isGlobalEvent, ...restData } = data;
+            const { publishTime, deadlineTime, isGlobalEvent, ...restData } = data;
 
             const departments = normalizeTargetArray(data.targetAudience?.departments);
             const locations = normalizeTargetArray(data.targetAudience?.locations);
             const roles = normalizeTargetArray(data.targetAudience?.roles);
 
             const normalizedTargetAudience =
-                departments || locations || roles
+                departments.length > 0 || locations.length > 0 || roles.length > 0
                     ? {
-                        ...(departments && { departments }),
-                        ...(locations && { locations }),
-                        ...(roles && { roles }),
+                        ...(departments.length > 0 && { departments }),
+                        ...(locations.length > 0 && { locations }),
+                        ...(roles.length > 0 && { roles }),
                     }
                     : undefined;
 
-            const payload: any = {
+            const payload: CreateAnnouncementDto = {
                 ...restData,
                 isGlobalEvent: !!isGlobalEvent,
-                deadlineTime: deadlineTime ? `${deadlineTime}:00` : null,
+                deadlineTime: deadlineTime ? `${deadlineTime}:00` : undefined,
 
                 publishDate: data.publishDate
                     ? combineDateAndTimeToUTC(data.publishDate, publishTime)
@@ -130,7 +136,7 @@ const AnnouncementFormPage: React.FC = () => {
                 await announcementService.create(payload);
             }
 
-            navigate("/announcements");
+            navigate(-1);
         } catch (err) {
             setError(
                 getErrorMessage(
@@ -144,7 +150,7 @@ const AnnouncementFormPage: React.FC = () => {
     };
 
     const handleCancel = () => {
-        navigate("/announcements");
+        navigate(-1);
     };
 
     if (isFetching) {

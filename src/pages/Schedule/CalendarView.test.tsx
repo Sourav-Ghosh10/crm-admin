@@ -1,13 +1,14 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import CalendarView from "./CalendarView";
 import { jest } from "@jest/globals";
+import type { Holiday } from "../../types/organization.types";
 
 describe("CalendarView Component", () => {
     const mockDate = new Date("2024-01-01T00:00:00Z");
     const mockOnDateClick = jest.fn();
     const mockHolidays = [
-        { _id: "h1", name: "New Year", date: "2024-01-01", type: "Public", isRecurring: true, isActive: true }
-    ] as any;
+        { _id: "h1", name: "New Year", date: "2024-01-01", isRecurring: true, isActive: true }
+    ] as Holiday[];
     const mockUsersByDate = {
         "2024-01-01": {
             users: [{ _id: "u1", firstName: "John", lastName: "Doe" }],

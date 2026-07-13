@@ -47,11 +47,19 @@ export const departmentService = {
         return result as Department;
     },
 
-    delete: async (id: string, isActive: boolean = false): Promise<Record<string, unknown>> => {
-        const response = await api.delete<Record<string, unknown>>(`/departments/${id}`, {
-            params: { isActive }
+    delete: async (id: string): Promise<Record<string, unknown>> => {
+        const response = await api.patch<Record<string, unknown>>(`/departments/${id}/status`, {
+            isActive: false
         });
         const result = (response.data?.data || response.data) as Record<string, unknown>;
         return result;
+    },
+
+    toggleStatus: async (id: string, isActive: boolean): Promise<Department> => {
+        const response = await api.patch<Record<string, unknown>>(`/departments/${id}/status`, {
+            isActive
+        });
+        const result = response.data?.data || response.data;
+        return result as Department;
     }
 };

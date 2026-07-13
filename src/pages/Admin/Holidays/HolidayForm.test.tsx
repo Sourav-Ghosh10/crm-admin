@@ -53,7 +53,7 @@ describe("HolidayForm Component", () => {
 
         await waitFor(() => {
             expect(mockOnSubmit).toHaveBeenCalled();
-            const callArgs = mockOnSubmit.mock.calls[0][0] as any;
+            const callArgs = (mockOnSubmit.mock.calls[0][0] || {}) as Record<string, unknown>;
             expect(callArgs.name).toBe("Diwali");
             expect(callArgs.date).toBe("2024-11-01");
             expect(callArgs.description).toBe("Festival of lights");

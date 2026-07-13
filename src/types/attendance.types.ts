@@ -2,6 +2,9 @@ export interface AttendanceCheck {
   time: string;
   ipAddress: string;
   deviceInfo?: string;
+  latitude?: number;
+  longitude?: number;
+  address?: string;
 }
 
 export interface AttendanceSession {
@@ -26,6 +29,7 @@ export interface AttendanceBreak {
 export interface EmployeeInfo {
   _id: string;
   username: string;
+  employeeId?: string;
   fullName?: string;
   personalInfo: {
     firstName?: string;
@@ -53,6 +57,7 @@ export interface Attendance {
   status: string;
   totalHours: number;
   totalDurationString?: string;
+  netDurationString?: string;
   breakTime?: number;
   totalBreakDurationString?: string;
   overtime: number;
@@ -69,6 +74,7 @@ export interface Attendance {
   profilePicture?: string;
   department?: string;
   designation?: string;
+  timeline?: any[];
 }
 
 export interface AttendanceFilters {

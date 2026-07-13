@@ -3,18 +3,20 @@ import { MemoryRouter } from "react-router-dom";
 import AnnouncementsList from "./AnnouncementsList";
 import { announcementService } from "../../services/announcementService";
 import { jest } from "@jest/globals";
+import type { Announcement, AnnouncementListResponse } from "../../types/announcement.types";
 
 jest.mock("../../services/announcementService");
 
 describe("AnnouncementsList Page", () => {
     beforeEach(() => {
-        (announcementService.getAll as any).mockResolvedValue({
+        jest.mocked(announcementService.getAll).mockResolvedValue({
             data: [
-                { id: "1", title: "Company Update", priority: "high", category: "general" },
-                { id: "2", title: "Holiday Notice", priority: "medium", category: "holiday" }
+                { _id: "1", id: "1", title: "Company Update", priority: "high", category: "general" } as unknown as Announcement,
+                { _id: "2", id: "2", title: "Holiday Notice", priority: "medium", category: "holiday" } as unknown as Announcement
             ],
-            pagination: { total: 2, pages: 1, page: 1, limit: 10 }
-        });
+            pagination: { total: 2, pages: 1, page: 1, limit: 10 },
+            success: true
+        } as unknown as AnnouncementListResponse);
     });
 
     it("renders loading state initially", () => {

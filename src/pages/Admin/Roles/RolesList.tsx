@@ -3,9 +3,8 @@ import {
     Plus,
     Edit,
     Shield,
-    CheckCircle2,
-    XCircle,
-    Trash2,
+    Archive,
+    RefreshCw,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -21,6 +20,8 @@ import FilterDropdown from "../../../components/common/Filter/FilterDropdown";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import Pagination from "../../../components/common/Pagination";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const RolesList: React.FC = () => {
     const [roles, setRoles] = useState<Role[]>([]);
@@ -35,6 +36,9 @@ const RolesList: React.FC = () => {
 
     const { confirm, ConfirmationDialog } = useConfirmation();
 
+    // Permissions
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.ROLE_MANAGE);
+
     const [page, setPage] = useState(1);
     const [limit] = useState(10);
     const [totalPages, setTotalPages] = useState(0);
@@ -48,14 +52,14 @@ const RolesList: React.FC = () => {
             const filters: RoleFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
             };
             const response = await roleService.getAll(filters);
             setRoles(response.data);
             setTotalPages(response.totalPages);
 
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -84,14 +88,16 @@ const RolesList: React.FC = () => {
 
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Role`,
-            message: `Are you sure you want to ${action} "${role.name}"?`,
+            message: role.isActive
+                ? `Are you sure you want to deactivate "${role.name}"? It will be hidden from dropdowns but preserved in the database.`
+                : `Are you sure you want to reactivate "${role.name}"? It will become available in dropdowns again.`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: role.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await roleService.update(role._id, { isActive: !role.isActive });
+                await roleService.toggleStatus(role._id, !role.isActive);
                 fetchRoles(page);
             } catch (error) {
                 console.error(`Failed to ${action} role: `, error);
@@ -101,25 +107,7 @@ const RolesList: React.FC = () => {
         }
     };
 
-    const handleDelete = async (role: Role) => {
-        const confirmed = await confirm({
-            title: 'Delete Role',
-            message: `Are you sure you want to PERMANENTLY delete "${role.name}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
 
-        if (confirmed) {
-            try {
-                await roleService.delete(role._id);
-                fetchRoles(page);
-            } catch (error) {
-                console.error(`Failed to delete role: `, error);
-                const errorMessage = getErrorMessage(error, "Failed to delete role");
-                alert(errorMessage);
-            }
-        }
-    };
 
     const handleEdit = (role: Role) => {
         setCurrentRole(role);
@@ -204,35 +192,35 @@ const RolesList: React.FC = () => {
             align: "right" as const,
             format: (_: unknown, row: Role) => (
                 <div className="flex items-center justify-end gap-2">
-                    <button
-                        onClick={() => handleEdit(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all"
-                        title="Edit Role"
-                    >
-                        <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                        onClick={() => handleToggleStatus(row)}
-                        className={cn(
-                            "w-9 h-9 flex items-center justify-center rounded-xl transition-all",
-                            row.isActive ? "hover:bg-warning/10 hover:text-warning" : "hover:bg-success/10 hover:text-success",
-                            "text-foreground-secondary"
-                        )}
-                        title={row.isActive ? "Deactivate" : "Activate"}
-                    >
-                        {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Role"
-                    >
-                        <Trash2 className="w-4 h-4" />
-                    </button>
+                    {canManage && (
+                        <>
+                            <button
+                                onClick={() => handleEdit(row)}
+                                className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all"
+                                title="Edit Role"
+                            >
+                                <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => handleToggleStatus(row)}
+                                className={cn(
+                                    "w-9 h-9 flex items-center justify-center rounded-xl transition-all",
+                                    row.isActive ? "hover:bg-warning/10 hover:text-warning" : "hover:bg-success/10 hover:text-success",
+                                    "text-foreground-secondary"
+                                )}
+                                title={row.isActive ? "Deactivate" : "Activate"}
+                            >
+                                {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
+                            </button>
+
+                        </>
+                    )}
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -255,35 +243,39 @@ const RolesList: React.FC = () => {
                         Define and manage security roles.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Create Role
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Create Role
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="roles"
                         placeholder="Search roles..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                <FilterDropdown
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest"
-                    options={[
-                        { value: "all", label: "All Status" },
-                        { value: "active", label: "Active Only" },
-                        { value: "inactive", label: "Inactive Only" },
-                    ]}
-                />
+                <div className="shrink-0 w-full lg:w-auto">
+                    <FilterDropdown
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest w-full lg:w-[200px]"
+                        options={[
+                            { value: "all", label: "All Status" },
+                            { value: "active", label: "Active Only" },
+                            { value: "inactive", label: "Inactive Only" },
+                        ]}
+                    />
+                </div>
             </div>
 
             <div className="bg-surface rounded-xl sm:rounded-xl border border-border/40 shadow-2xl shadow-primary/5 overflow-hidden relative min-h-[400px]">
@@ -294,7 +286,7 @@ const RolesList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={roles}
                     className="border-none"
                     emptyState={
@@ -327,7 +319,7 @@ const RolesList: React.FC = () => {
                 open={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 title={currentRole?._id ? "Modify Role Configuration" : "Initialize Security Role"}
-                maxWidth="md"
+                maxWidth="lg"
             >
                 <RoleForm
                     initialValues={currentRole || {}}

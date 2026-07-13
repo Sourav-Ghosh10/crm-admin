@@ -8,13 +8,15 @@ jest.mock("../../../services/departmentService");
 
 describe("DepartmentsList Page", () => {
     beforeEach(() => {
-        (departmentService.getAll as any).mockResolvedValue({
+        jest.mocked(departmentService.getAll).mockResolvedValue({
             data: [
-                { _id: "1", name: "Engineering", description: "Software team", isActive: true },
-                { _id: "2", name: "HR", description: "Human resources", isActive: false }
+                { _id: "1", id: "1", name: "Engineering", description: "Software team", isActive: true },
+                { _id: "2", id: "2", name: "HR", description: "Human resources", isActive: false }
             ],
             total: 2,
-            totalPages: 1
+            totalPages: 1,
+            page: 1,
+            limit: 10
         });
     });
 

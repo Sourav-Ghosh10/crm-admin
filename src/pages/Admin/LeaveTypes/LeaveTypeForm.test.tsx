@@ -4,6 +4,7 @@ import LeaveTypeForm from "./LeaveTypeForm";
 import { jest } from "@jest/globals";
 import { departmentService } from "../../../services/departmentService";
 import { designationService } from "../../../services/designationService";
+import type { Department, Designation, PaginatedResponse } from "../../../types/organization.types";
 
 jest.mock("../../../services/departmentService");
 jest.mock("../../../services/designationService");
@@ -17,7 +18,10 @@ describe("LeaveTypeForm Component", () => {
             { _id: "1", name: "IT" },
             { _id: "2", name: "HR" }
         ],
-        total: 2
+        total: 2,
+        page: 1,
+        limit: 10,
+        totalPages: 1
     };
 
     const mockDesignations = {
@@ -25,14 +29,17 @@ describe("LeaveTypeForm Component", () => {
             { _id: "1", title: "Developer" },
             { _id: "2", title: "Manager" }
         ],
-        total: 2
+        total: 2,
+        page: 1,
+        limit: 10,
+        totalPages: 1
     };
 
     beforeEach(() => {
         mockOnSubmit.mockClear();
         mockOnCancel.mockClear();
-        (departmentService.getAll as any).mockResolvedValue(mockDepartments);
-        (designationService.getAll as any).mockResolvedValue(mockDesignations);
+        jest.mocked(departmentService.getAll).mockResolvedValue(mockDepartments as unknown as PaginatedResponse<Department>);
+        jest.mocked(designationService.getAll).mockResolvedValue(mockDesignations as unknown as PaginatedResponse<Designation>);
     });
 
     it("renders correctly with initial values", async () => {

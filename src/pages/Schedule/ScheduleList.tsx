@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { ChevronLeft, ChevronRight, Calendar, LayoutGrid, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, LayoutGrid, Users } from "lucide-react";
 import {
     addWeeks,
     subWeeks,
@@ -16,7 +16,6 @@ import {
 } from "date-fns";
 import { getAdminDateKey } from "../../utils/dateUtils";
 import { cn } from "../../lib/utils";
-import Button from "../../components/common/Button";
 import type { EmployeeRoster, PaginatedScheduleResponse } from "../../types/schedule.types";
 import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
 import UnifiedFilter from "../../components/common/Filter/UnifiedFilter";
@@ -33,11 +32,15 @@ import { userService } from "../../services/userService";
 import { locationService } from "../../services/locationService";
 import { departmentService } from "../../services/departmentService";
 import { scheduleService } from "../../services/scheduleService";
+import { roleService } from "../../services/roleService";
 import { holidayService } from "../../services/holidayService";
 import type { User } from "../../types/user.types";
 import EmployeeListPanel from "./EmployeeListPanel";
 import EmployeeCalendarView from "./EmployeeCalendarView";
 import BulkActionsToolbar from "./BulkActionsToolbar";
+import TimezoneToggle from "../../components/common/TimezoneToggle";
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
 
 interface DayUser {
     firstName: string;
@@ -124,6 +127,8 @@ const ScheduleList: React.FC = () => {
 
     const { confirm, ConfirmationDialog } = useConfirmation();
 
+    const { hasPermission: canManageSchedule } = usePermissions(PERMISSIONS.SCHEDULE_MANAGE);
+
     // Navigation limits
     const maxDate = addMonths(startOfMonth(new Date()), 2);
 
@@ -159,8 +164,19 @@ const ScheduleList: React.FC = () => {
     useEffect(() => {
         const fetchFilterData = async () => {
             try {
+                // Fetch roles first to resolve the "employee" role ObjectId
+                const rolesRes = await roleService.getAll({ limit: 100, isActive: true });
+                const employeeRole = rolesRes.data.find(
+                    (r) => r.name.toLowerCase() === "employee"
+                );
+
+                const userParams: Record<string, unknown> = { limit: 100 };
+                if (employeeRole) {
+                    userParams.roleId = employeeRole._id;
+                }
+
                 const [empData, locData, depData, holData] = await Promise.all([
-                    userService.getAll({ role: "employee", limit: 100 }),
+                    userService.getAll(userParams),
                     locationService.getAll({ isActive: true, limit: 100 }),
                     departmentService.getAll({ isActive: true, limit: 100 }),
                     holidayService.getAll({ limit: 100 })
@@ -253,9 +269,8 @@ const ScheduleList: React.FC = () => {
                 response = await scheduleService.getAll(filters);
             }
 
-            if (response) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const data = (response as any).data;
+            if (response && 'data' in (response as object)) {
+                const data = (response as { data: unknown }).data;
 
 
                 // Extract items: can be directly in response.data (if array) OR in response.data.rosters/schedules
@@ -311,7 +326,7 @@ const ScheduleList: React.FC = () => {
     const fetchDaySchedules = useCallback(async (date: Date, page: number = 1, search: string = '') => {
         try {
             setIsDayLoading(true);
-            const dateStr = format(date, "yyyy-MM-dd");
+            const dateStr = getAdminDateKey(date);
             const filters: ScheduleFilters = {
                 startDate: dateStr,
                 endDate: dateStr,
@@ -664,12 +679,10 @@ const ScheduleList: React.FC = () => {
         setPrefilledEmployeeId(employeeId);
 
         // Find employee name
-        const employee = employees.find(e =>
-            String(e._id) === employeeId ||
-            e.id === employeeId ||
-            e.employeeId === employeeId ||
-            (typeof e._id === 'object' && e._id && '$oid' in e._id && (e._id as any).$oid === employeeId)
-        );
+        const employee = employees.find(e => {
+            const safeId = getSafeEmployeeId(e);
+            return safeId === employeeId || e.id === employeeId || e.employeeId === employeeId;
+        });
         setPrefilledEmployeeName(employee ? `${employee.personalInfo.firstName} ${employee.personalInfo.lastName}` : "");
 
         // Set prefilled date
@@ -695,12 +708,10 @@ const ScheduleList: React.FC = () => {
         setEditingTimeIndex(null);
         setPrefilledEmployeeId(employeeId);
 
-        const employee = employees.find(e =>
-            String(e._id) === employeeId ||
-            e.id === employeeId ||
-            e.employeeId === employeeId ||
-            (typeof e._id === 'object' && e._id && '$oid' in e._id && (e._id as any).$oid === employeeId)
-        );
+        const employee = employees.find(e => {
+            const safeId = getSafeEmployeeId(e);
+            return safeId === employeeId || e.id === employeeId || e.employeeId === employeeId;
+        });
         setPrefilledEmployeeName(employee ? `${employee.personalInfo.firstName} ${employee.personalInfo.lastName}` : "");
 
         if (selectedDate) {
@@ -739,7 +750,7 @@ const ScheduleList: React.FC = () => {
     return (
         <>
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-700 mx-auto px-2 sm:px-0">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 sm:gap-6 relative z-40">
                     <div>
                         <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-foreground tracking-tight">Deployment Rosters</h1>
                         <p className="text-sm sm:text-base text-foreground-tertiary mt-2 flex items-center gap-2">
@@ -747,10 +758,11 @@ const ScheduleList: React.FC = () => {
                             Manage daily and weekly shifts for your workforce.
                         </p>
                     </div>
+                    <TimezoneToggle variant="horizontal" />
                 </div>
 
                 {/* Bulk Actions Toolbar */}
-                {selectedEmployeeIds.length > 0 && (
+                {canManageSchedule && selectedEmployeeIds.length > 0 && (
                     <BulkActionsToolbar
                         selectedCount={selectedEmployeeIds.length}
                         onBulkAssign={handleBulkAssign}
@@ -759,118 +771,117 @@ const ScheduleList: React.FC = () => {
                     />
                 )}
 
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+                <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
                     {/* Search */}
-                    <div className="lg:col-span-3">
+                    <div className="flex-1 w-full">
                         {viewType !== 'calendar' && (
                             <MultiEmployeeSearch
                                 options={employees.map(u => ({
                                     ...u,
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    _id: typeof (u._id as any) === 'object' && u._id && '$oid' in (u._id as any) ? (u._id as any).$oid : String(u._id)
+                                    _id: getSafeEmployeeId(u)
                                 }))}
                                 selectedEmployees={selectedEmployeeIds}
                                 onSelectionChange={setSelectedEmployeeIds}
+                                searchKey="schedule-employee-search"
                                 placeholder="Select employees..."
                             />
                         )}
                     </div>
 
                     {/* Date Navigation & Views - Centered on large screens */}
-                    <div className="lg:col-span-6 flex flex-col sm:flex-row items-center gap-3">
-                        <div className="flex items-center gap-2 bg-surface p-1 rounded-xl border border-border/50 h-[42px]">
-                            <Button
-                                variant="ghost"
-                                size="icon"
+                    <div className="shrink-0 flex flex-col sm:flex-row items-center gap-3">
+                        <div className="flex items-center gap-2 bg-surface/80 p-1 rounded-xl border border-border/50 h-[42px]">
+                            <button
                                 onClick={handlePrevious}
-                                className="w-8 h-8 rounded-lg hover:bg-muted text-foreground-secondary"
+                                className="p-1.5 hover:bg-muted rounded-lg transition-colors text-foreground-tertiary hover:text-primary"
+                                title="Previous"
                             >
-                                <ChevronLeft className="w-4 h-4" />
-                            </Button>
-                            <div className="px-2 min-w-[140px] text-center">
-                                <div className="text-sm font-black text-foreground">{getRangeLabel()}</div>
-                            </div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
+                                <ChevronLeft className="w-5 h-5" />
+                            </button>
+                            <span className="text-xs font-black uppercase tracking-widest px-2 min-w-[140px] text-center border-x border-border/50">
+                                {getRangeLabel()}
+                            </span>
+                            <button
                                 onClick={handleNext}
                                 disabled={isNextDisabled}
                                 className={cn(
-                                    "w-8 h-8 rounded-lg hover:bg-muted text-foreground-secondary",
-                                    isNextDisabled && "opacity-50 cursor-not-allowed hover:bg-transparent"
+                                    "p-1.5 rounded-lg transition-colors text-foreground-tertiary",
+                                    isNextDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted hover:text-primary"
+                                )}
+                                title="Next"
+                            >
+                                <ChevronRight className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="flex items-center gap-2 p-1 bg-surface/80 rounded-xl border border-border/50 h-[42px]">
+                            <button
+                                onClick={() => setViewMode("week")}
+                                className={cn(
+                                    "px-3 h-full rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                                    viewMode === "week" ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-foreground-tertiary hover:bg-muted"
                                 )}
                             >
-                                <ChevronRight className="w-4 h-4" />
-                            </Button>
+                                Week
+                            </button>
+                            <button
+                                onClick={() => setViewMode("month")}
+                                className={cn(
+                                    "px-3 h-full rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                                    viewMode === "month" ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-foreground-tertiary hover:bg-muted"
+                                )}
+                            >
+                                Month
+                            </button>
                         </div>
 
-                        <Button
-                            variant="ghost"
+                        <button
                             onClick={handleToday}
-                            className="h-[42px] px-4 rounded-xl border border-border/50 text-xs font-bold text-foreground-secondary hover:text-primary hover:bg-primary/5 hover:border-primary/20"
-                            startIcon={<Calendar className="w-3.5 h-3.5" />}
+                            className="h-[42px] px-4 rounded-xl border-border/50 bg-surface/80 text-[10px] font-black uppercase tracking-widest text-foreground-tertiary hover:bg-muted hover:text-primary transition-all border"
                         >
                             Today
-                        </Button>
+                        </button>
                     </div>
 
-                    {/* Filters */}
-                    <div className="lg:col-span-3 flex flex-wrap sm:flex-nowrap justify-end gap-2">
-                        {/* View Type Toggle */}
-                        <div className="flex bg-surface p-1 rounded-xl border border-border/50 h-[42px] items-center">
-                            {(["grid", "calendar"] as const).map((type) => (
-                                <button
-                                    key={type}
-                                    onClick={() => setViewType(type)}
-                                    title={type.charAt(0).toUpperCase() + type.slice(1) + " View"}
-                                    className={cn(
-                                        "w-9 h-full rounded-lg flex items-center justify-center transition-all",
-                                        viewType === type ? "bg-primary/10 text-primary" : "text-foreground-tertiary hover:bg-muted"
-                                    )}
-                                >
-                                    {type === 'grid' ? <LayoutGrid className="w-4 h-4" /> :
-                                        <Users className="w-4 h-4" />}
-                                </button>
-                            ))}
-                        </div>
+                    {/* Filters & View Switches */}
+                    <div className="shrink-0 flex items-center gap-3">
+                        <UnifiedFilter
+                            filters={[
+                                {
+                                    id: "department",
+                                    label: "Department",
+                                    value: departmentName,
+                                    onChange: setDepartmentName,
+                                    options: [
+                                        { value: "all", label: "All Depts" },
+                                        ...departments.map(d => ({ value: d.name, label: d.name }))
+                                    ]
+                                }
+                            ]}
+                        />
 
-                        <div className="flex bg-surface p-1 rounded-xl border border-border/50 h-[42px] items-center flex-1 sm:flex-none">
-                            {(["week", "month"] as const).map((mode) => (
-                                <button
-                                    key={mode}
-                                    onClick={() => setViewMode(mode)}
-                                    className={cn(
-                                        "px-3 h-full rounded-lg text-xs font-bold transition-all capitalize",
-                                        viewMode === mode ? "bg-primary/10 text-primary" : "text-foreground-tertiary hover:bg-muted"
-                                    )}
-                                >
-                                    {mode}
-                                </button>
-                            ))}
+                        <div className="h-[42px] p-1 bg-surface/80 rounded-xl border border-border/50 flex items-center gap-1">
+                            <button
+                                onClick={() => setViewType("grid")}
+                                className={cn(
+                                    "w-9 h-full flex items-center justify-center rounded-lg transition-all",
+                                    viewType === "grid" ? "bg-primary/10 text-primary" : "text-foreground-tertiary hover:bg-muted"
+                                )}
+                                title="Grid View"
+                            >
+                                <LayoutGrid className="w-4 h-4" />
+                            </button>
+                            <button
+                                onClick={() => setViewType("calendar")}
+                                className={cn(
+                                    "w-9 h-full flex items-center justify-center rounded-lg transition-all",
+                                    viewType === "calendar" ? "bg-primary/10 text-primary" : "text-foreground-tertiary hover:bg-muted"
+                                )}
+                                title="Calendar View"
+                            >
+                                <Users className="w-4 h-4" />
+                            </button>
                         </div>
-
-                        {viewType !== 'calendar' && (
-                            <UnifiedFilter
-                                filters={[
-                                    {
-                                        id: "department",
-                                        label: "Department",
-                                        value: departmentName,
-                                        onChange: (val) => {
-                                            setDepartmentName(val);
-                                            setMainPage(1); // Reset to first page when filter changes
-                                        },
-                                        options: [
-                                            { value: "all", label: "All Departments" },
-                                            ...departments.map(dep => ({
-                                                value: dep.name,
-                                                label: dep.name
-                                            }))
-                                        ]
-                                    },
-                                ]}
-                            />
-                        )}
                     </div>
                 </div>
 

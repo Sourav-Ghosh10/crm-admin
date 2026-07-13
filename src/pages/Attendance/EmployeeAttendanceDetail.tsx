@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
     Calendar,
     AlertCircle,
     ArrowRight,
+    MapPin,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isToday } from "date-fns";
 import { cn } from "../../lib/utils";
@@ -21,25 +22,60 @@ import Input from "../../components/common/Input/Input";
 import Pagination from "../../components/common/Pagination";
 import FilterDropdown from "../../components/common/Filter/FilterDropdown";
 import TimezoneDualView from "../../components/common/TimezoneDualView";
+import TimezoneToggle from "../../components/common/TimezoneToggle";
+import { getOfficeTimezone } from "../../utils/dateUtils";
+import { resolveCheckInLocation } from "../../utils/attendanceLocationUtils";
 
 type FilterType = "weekly" | "monthly" | "custom";
+
+// Treat YYYY-MM-DD as a "date-only" value in local time (avoid UTC shifting).
+const ymdToLocalDate = (value: string): Date => {
+    const ymd = (value || "").slice(0, 10);
+    const [y, m, d] = ymd.split("-").map((n) => Number(n));
+    if (!y || !m || !d) return new Date(value);
+    return new Date(y, m - 1, d);
+};
+
+const ymdInRangeInclusive = (value: string, start: string, end: string): boolean => {
+    const v = (value || "").slice(0, 10);
+    const s = (start || "").slice(0, 10);
+    const e = (end || "").slice(0, 10);
+    if (!v || !s || !e) return true;
+    // Lexicographic works for YYYY-MM-DD
+    return v >= s && v <= e;
+};
 
 const EmployeeAttendanceDetail: React.FC = () => {
     const { employeeId } = useParams<{ employeeId: string }>();
     const navigate = useNavigate();
+    const [searchParams, setSearchParams] = useSearchParams();
 
     // Filter States
-    const [filterType, setFilterType] = useState<FilterType>("weekly");
+    const [filterType, setFilterType] = useState<FilterType>(
+        (searchParams.get("type") as FilterType) || "weekly"
+    );
     const [startDate, setStartDate] = useState<string>(
-        format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
+        searchParams.get("start") || format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
     );
     const [endDate, setEndDate] = useState<string>(
-        format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
+        searchParams.get("end") || format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
     );
 
     // Pagination State
-    const [page, setPage] = useState(1);
-    const [limit, setLimit] = useState(10);
+    const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
+    const [limit, setLimit] = useState(Number(searchParams.get("limit")) || 10);
+
+    // Sync state to URL
+    useEffect(() => {
+        const params: Record<string, string> = {
+            type: filterType,
+            start: startDate,
+            end: endDate,
+            page: page.toString(),
+            limit: limit.toString()
+        };
+        setSearchParams(params, { replace: true });
+    }, [filterType, startDate, endDate, page, limit, setSearchParams]);
 
     // Fetch Employee Info
     const { data: employee, isLoading: isLoadingEmployee } = useQuery({
@@ -53,8 +89,8 @@ const EmployeeAttendanceDetail: React.FC = () => {
         queryKey: ["employee-attendance", employeeId, filterType, startDate, endDate, page, limit],
         queryFn: () => attendanceService.getAll({
             userId: employeeId,
-            startDate: new Date(startDate).toISOString(),
-            endDate: new Date(endDate).toISOString(),
+            startDate: startDate,
+            endDate: endDate,
             page,
             limit
         }),
@@ -81,16 +117,16 @@ const EmployeeAttendanceDetail: React.FC = () => {
         {
             _id: "date",
             label: "Date",
-            format: (value: any, row: Attendance) => (
+            format: (value: unknown, row: Attendance) => (
                 <div className={cn(
                     "flex flex-col transition-opacity duration-300",
                     fadedStatuses.includes(row.status?.toLowerCase()) && "opacity-40"
                 )}>
                     <span className="font-bold text-foreground">
-                        {format(new Date(value), "MMM dd, yyyy")}
+                        {format(ymdToLocalDate(String(value || "")), "MMM dd, yyyy")}
                     </span>
                     <span className="text-[10px] text-foreground-tertiary uppercase font-black tracking-widest">
-                        {format(new Date(value), "EEEE")}
+                        {format(ymdToLocalDate(String(value || "")), "EEEE")}
                     </span>
                 </div>
             )
@@ -98,80 +134,173 @@ const EmployeeAttendanceDetail: React.FC = () => {
         {
             _id: "checkIn",
             label: "Check In",
-            format: (value: any, row: Attendance) => (
-                <div className={cn(
-                    "flex items-center gap-2 transition-opacity duration-300",
-                    fadedStatuses.includes(row.status?.toLowerCase()) && "opacity-40"
-                )}>
-                    {value?.time ? (
-                        <TimezoneDualView
-                            startTime={value.time}
-                            primaryTimezone={employee?.employment?.timezone || 'Asia/Kolkata'}
-                            secondaryTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
-                        />
-                    ) : (
-                        <span className="font-mono font-bold text-sm text-foreground-tertiary">--:--</span>
-                    )}
-                </div>
-            )
+            format: (value: unknown, employee: Attendance) => {
+                const val = value as { time?: string } | undefined;
+                return (
+                    <div className={cn(
+                        "flex items-center gap-2 transition-opacity duration-300",
+                        fadedStatuses.includes(employee.status?.toLowerCase()) && "opacity-40"
+                    )}>
+                        {val?.time ? (
+                            <TimezoneDualView
+                                startTime={val.time}
+                                primaryTimezone={employee?.employeeId?.employment?.timezone || 'Asia/Kolkata'}
+                                secondaryTimezone={getOfficeTimezone()}
+                            />
+                        ) : (
+                            <span className="font-mono font-bold text-sm text-foreground-tertiary">--:--</span>
+                        )}
+                    </div>
+                );
+            }
+        },
+        {
+            _id: "clockInLocation",
+            label: "Location",
+            format: (_: unknown, row: Attendance) => {
+                const isFaded = fadedStatuses.includes(row.status?.toLowerCase());
+                const checkInLoc = resolveCheckInLocation(row);
+
+                if (!checkInLoc || (!checkInLoc.address && !checkInLoc.latitude)) {
+                    return <span className={cn("text-foreground-tertiary", isFaded && "opacity-40")}>-</span>;
+                }
+
+                const address = checkInLoc.address;
+                const lat = checkInLoc.latitude;
+                const lng = checkInLoc.longitude;
+
+                if (!address && !lat) return <span className={cn("text-foreground-tertiary", isFaded && "opacity-40")}>-</span>;
+
+                return (
+                    <div className={cn(
+                        "flex flex-col gap-1 py-1 transition-opacity duration-300",
+                        isFaded && "opacity-40"
+                    )}>
+                        {address ? (
+                            <a
+                                href={`https://www.google.com/maps/search/?api=1&query=${lat || ''},${lng || ''}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-start gap-1 max-w-[150px] hover:text-primary transition-colors group"
+                                title="Click to view on Google Maps"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MapPin className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                                <span className="text-xs text-foreground-secondary leading-normal font-medium line-clamp-1">
+                                    {address}
+                                </span>
+                            </a>
+                        ) : lat && lng ? (
+                            <a 
+                                href={`https://www.google.com/maps/search/?api=1&query=${lat},${lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1.5 text-xs text-primary hover:underline font-bold"
+                                title="Click to view on Google Maps"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <MapPin className="w-3.5 h-3.5 text-primary" />
+                                <span>{lat.toFixed(4)}, {lng.toFixed(4)}</span>
+                            </a>
+                        ) : (
+                            <span className="text-foreground-tertiary">-</span>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             _id: "checkOut",
             label: "Check Out",
-            format: (value: any, row: Attendance) => (
-                <div className={cn(
-                    "flex items-center gap-2 transition-opacity duration-300",
-                    fadedStatuses.includes(row.status?.toLowerCase()) && "opacity-40"
-                )}>
-                    {value?.time ? (
-                        <TimezoneDualView
-                            startTime={value.time}
-                            primaryTimezone={employee?.employment?.timezone || 'Asia/Kolkata'}
-                            secondaryTimezone={Intl.DateTimeFormat().resolvedOptions().timeZone}
-                        />
-                    ) : (
-                        <span className="font-mono font-bold text-sm text-foreground-tertiary">--:--</span>
-                    )}
-                </div>
-            )
+            format: (value: unknown, row: Attendance) => {
+                const val = value as { time?: string } | undefined;
+                const sessions = row.sessions || [];
+                const isCurrentlyWorking = sessions.length > 0 && !sessions[sessions.length - 1].checkOut;
+
+                return (
+                    <div className={cn(
+                        "flex items-center gap-2 transition-opacity duration-300",
+                        fadedStatuses.includes(row.status?.toLowerCase()) && "opacity-40"
+                    )}>
+                        <div className="relative inline-block group/session">
+                            {isCurrentlyWorking ? (
+                                <span className="text-primary font-black uppercase tracking-widest text-[9px] bg-primary/10 border border-primary/20 px-2.5 py-1.5 rounded-lg animate-pulse shadow-sm shadow-primary/10">
+                                    Working
+                                </span>
+                            ) : (row.checkOut?.time || val?.time) ? (
+                                <TimezoneDualView
+                                    startTime={row.checkOut?.time || val?.time || ""}
+                                    primaryTimezone={employee?.employment?.timezone || 'Asia/Kolkata'}
+                                    secondaryTimezone={getOfficeTimezone()}
+                                />
+                            ) : (
+                                <span className="font-mono font-bold text-sm text-foreground-tertiary">--:--</span>
+                            )}
+                            {(row.sessions && row.sessions.length > 1) && !isCurrentlyWorking && (
+                                <div className="absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[1.2rem] h-4.5 px-1 rounded-full bg-primary text-[9px] font-black text-white shadow-md ring-2 ring-surface z-10">
+                                    {row.sessions.length > 2 ? '2+' : '2'}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
         },
         {
             _id: "totalHours",
             label: "Duration",
-            format: (value: any, row: Attendance) => {
+            format: (_: unknown, row: Attendance) => {
                 const isFaded = fadedStatuses.includes(row.status?.toLowerCase());
-                // Don't show duration if shift is incomplete/ongoing (no checkout time)
-                if (!value || !row.checkOut?.time) return <span className={cn("text-foreground-tertiary", isFaded && "opacity-40")}>-</span>;
+                const sessions = row.sessions || [];
+                const isCurrentlyWorking = sessions.length > 0 && !sessions[sessions.length - 1].checkOut;
 
-                // value is in totalHours, convert to minutes
-                const totalMinutes = value * 60;
+                // Show duration even if shift is ongoing, similar to the main Attendance Log
+                const durationStr = row.netDurationString || row.totalDurationString || "";
 
-                const h = Math.floor(totalMinutes / 60);
-                const m = Math.round(totalMinutes % 60);
                 return (
-                    <span className={cn(
-                        "font-black text-foreground text-sm transition-opacity duration-300",
-                        isFaded && "opacity-40"
-                    )}>
-                        {h > 0 ? `${h}h ` : ""}{m}m
-                    </span>
+                    <div className="flex flex-col">
+                        <span className={cn(
+                            "font-black text-foreground text-sm transition-opacity duration-300 uppercase",
+                            isFaded && "opacity-40"
+                        )}>
+                            {durationStr || "-"}
+                        </span>
+                        {isCurrentlyWorking && !isFaded && (
+                            <span className="text-[10px] text-primary font-black uppercase tracking-tighter animate-pulse">
+                                Working
+                            </span>
+                        )}
+                    </div>
                 );
             }
         },
         {
             _id: "breakTime",
             label: "Breaks",
-            format: (value: any, row: Attendance) => {
+            format: (value: unknown, row: Attendance) => {
+                const breaksCount = row.breaks?.length || 0;
+                // Use totalBreakDurationString if available, otherwise calculate from value
+                const durationStr = row.totalBreakDurationString;
+                const breakMinutes = Number(value) || 0;
                 const isFaded = fadedStatuses.includes(row.status?.toLowerCase());
-                if (!value) return <span className={cn("text-foreground-tertiary", isFaded && "opacity-40")}>-</span>;
-                const h = Math.floor(value / 60);
-                const m = Math.round(value % 60);
+
+                // Treat "0S" or null/empty as "-"
+                if ((!durationStr || durationStr === "0S") && breakMinutes === 0 && breaksCount === 0) {
+                    return <span className={cn("text-foreground-tertiary", isFaded && "opacity-40")}>-</span>;
+                }
+
+                const displayStr = durationStr || (() => {
+                    const h = Math.floor(breakMinutes / 60);
+                    const m = Math.round(breakMinutes % 60);
+                    return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                })();
+
                 return (
                     <span className={cn(
-                        "font-bold text-foreground-secondary text-sm transition-opacity duration-300",
+                        "font-bold text-foreground-secondary text-sm transition-opacity duration-300 uppercase",
                         isFaded && "opacity-40"
                     )}>
-                        {h > 0 ? `${h}h ` : ""}{m}m
+                        {displayStr}
                     </span>
                 );
             }
@@ -179,7 +308,7 @@ const EmployeeAttendanceDetail: React.FC = () => {
         {
             _id: "punctuality",
             label: "Punctuality",
-            format: (value: any, row: Attendance) => {
+            format: (value: unknown, row: Attendance) => {
                 if (row.status !== "present") return <span className="text-foreground-tertiary opacity-40">-</span>;
 
                 // Be resilient: check punctuality string, root isLate, and sessions
@@ -199,7 +328,8 @@ const EmployeeAttendanceDetail: React.FC = () => {
         {
             _id: "status",
             label: "Status",
-            format: (status: any) => {
+            format: (status: unknown) => {
+                const statusStr = String(status);
                 const variants: Record<string, string> = {
                     present: "bg-success/10 text-success border-success/20",
                     absent: "bg-error/10 text-error border-error/20",
@@ -212,9 +342,9 @@ const EmployeeAttendanceDetail: React.FC = () => {
                 return (
                     <span className={cn(
                         "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                        variants[status.toLowerCase()] || "bg-muted text-foreground-tertiary border-border"
+                        variants[statusStr.toLowerCase()] || "bg-muted text-foreground-tertiary border-border"
                     )}>
-                        {status}
+                        {statusStr}
                     </span>
                 );
             }
@@ -235,21 +365,31 @@ const EmployeeAttendanceDetail: React.FC = () => {
         );
     }
 
-    const records = (attendanceData?.attendances || []).map((r) => {
-        const isLate = r.punctuality === "Late" || r.isLate || (r.sessions && r.sessions.length > 0 && r.sessions.some(s => s.isLate));
-        return {
-            ...r,
-            _id: r._id || r.date,
-            isLate
-        };
-    });
+    const records = (attendanceData?.attendances || [])
+        // Safety: backend can ignore filters; never show rows outside the selected range
+        .filter((r) => ymdInRangeInclusive(String(r.date || ""), startDate, endDate))
+        // De-dupe by date (some APIs return duplicates per user/day)
+        .reduce<Attendance[]>((acc, r) => {
+            const key = String(r.date || "").slice(0, 10);
+            if (!key) return [...acc, r];
+            if (acc.some((x) => String(x.date || "").slice(0, 10) === key)) return acc;
+            return [...acc, r];
+        }, [])
+        .map((r) => {
+            const isLate = r.punctuality === "Late" || r.isLate || (r.sessions && r.sessions.length > 0 && r.sessions.some(s => s.isLate));
+            return {
+                ...r,
+                _id: r._id || r.date,
+                isLate
+            };
+        });
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700 max-w-7xl mx-auto px-2 md:px-4">
             {/* Header section */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                 <div className="space-y-4 w-full md:w-auto">
-                    <BackButton onClick={() => navigate("/attendance")} label="Back to Attendance Log" />
+                    <BackButton label="Back to Attendance Log" />
                     <div>
                         <h1 className="text-3xl sm:text-4xl font-black text-foreground tracking-tight flex items-center gap-4">
                             {employee.personalInfo?.firstName} {employee.personalInfo?.lastName}
@@ -259,20 +399,14 @@ const EmployeeAttendanceDetail: React.FC = () => {
                         </h1>
                         <p className="text-foreground-tertiary font-medium flex items-center gap-2 mt-2">
                             <Calendar className="w-4 h-4" />
-                            Showing attendance from <span className="text-foreground font-bold">{format(new Date(startDate), "MMM dd")}</span> to <span className="text-foreground font-bold">{format(new Date(endDate), "MMM dd, yyyy")}</span>
+                            Showing attendance from <span className="text-foreground font-bold">{format(ymdToLocalDate(startDate), "MMM dd")}</span> to <span className="text-foreground font-bold">{format(ymdToLocalDate(endDate), "MMM dd, yyyy")}</span>
                         </p>
                     </div>
                 </div>
 
-                {/* <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                    <Button
-                        variant="outline"
-                        className="rounded-2xl border-border px-5 flex text-sm ml-auto"
-                        startIcon={<Download className="w-4 h-4" />}
-                    >
-                        Export PDF
-                    </Button>
-                </div> */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <TimezoneToggle variant="horizontal" />
+                </div>
             </div>
 
             {/* Controls Card */}
@@ -352,10 +486,13 @@ const EmployeeAttendanceDetail: React.FC = () => {
                     <Table
                         columns={columns}
                         rows={records}
-                        onRowClick={(row) => navigate(`/attendance/record/${row.date}/${employeeId}`)}
+                        onRowClick={(row) => {
+                            const dateKey = String((row as Attendance).date || "").slice(0, 10);
+                            navigate(`/attendance/record/${encodeURIComponent(dateKey)}/${employeeId}`);
+                        }}
                         isRowClickable={(row) => {
-                            const status = (row as any).status?.toLowerCase();
-                            return !['absent', 'holiday', 'weekend', 'scheduled', 'on-leave', 'leave'].includes(status);
+                            // Clickable if there is any actual attendance data
+                            return !!(row as Attendance).checkIn?.time || ((row as Attendance).sessions && (row as Attendance).sessions.length > 0);
                         }}
                         rowClassName={(row) => {
                             const isTodayRow = isToday(new Date(row.date));
@@ -391,7 +528,6 @@ const EmployeeAttendanceDetail: React.FC = () => {
                                 className="
                             h-9 px-3 rounded-xl border-border/50
                             text-xs font-bold text-foreground-tertiary
-                            pr-8
                             hover:text-foreground-tertiary
                             focus:text-foreground-tertiary
                             data-[state=open]:text-foreground-tertiary

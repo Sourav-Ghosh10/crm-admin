@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "../../store/slices/authSlice";
+import type { User } from "../../types/user.types";
+import type { AuthState } from "../../store/slices/authSlice";
+import type { Department, Designation, PaginatedResponse } from "../../types/organization.types";
+import type { Attendance as AttendanceType } from "../../types/attendance.types";
 import Attendance from "./Attendance";
 import { attendanceService } from "../../services/attendanceService";
 import { departmentService } from "../../services/departmentService";
@@ -20,26 +24,28 @@ const createMockStore = (initialState = {}) => {
         },
         preloadedState: {
             auth: {
-                user: { _id: "admin1", isAdmin: true } as any,
+                user: { _id: "admin1", isAdmin: true } as unknown as User,
                 isAuthenticated: true,
                 isLoading: false,
                 isInitialized: true,
                 error: null,
                 ...initialState
-            } as any
+            } as unknown as AuthState
         }
     });
 };
 
 describe("Attendance Page", () => {
     beforeEach(() => {
-        (attendanceService.getAll as any).mockResolvedValue({
+        jest.mocked(attendanceService.getAll).mockResolvedValue({
             attendances: [],
             total: 0,
-            totalPages: 1
-        });
-        (departmentService.getAll as any).mockResolvedValue({ data: [] });
-        (designationService.getAll as any).mockResolvedValue({ data: [] });
+            totalPages: 1,
+            page: 1,
+            limit: 10
+        } as unknown as { attendances: AttendanceType[], total: number, totalPages: number, page: number, limit: number });
+        jest.mocked(departmentService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Department>);
+        jest.mocked(designationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Designation>);
     });
 
     it("renders attendance page", async () => {

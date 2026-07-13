@@ -47,7 +47,7 @@ describe("RoleForm Component", () => {
 
         await waitFor(() => {
             expect(mockOnSubmit).toHaveBeenCalled();
-            const callArgs = mockOnSubmit.mock.calls[0][0] as any;
+            const callArgs = (mockOnSubmit.mock.calls[0][0] || {}) as Record<string, unknown>;
             expect(callArgs.name).toBe("Manager");
             expect(callArgs.description).toBe("Team management");
             expect(callArgs.isActive).toBe(true);

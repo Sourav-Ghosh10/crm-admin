@@ -7,6 +7,9 @@ import { locationService } from "../../services/locationService";
 import { departmentService } from "../../services/departmentService";
 import { holidayService } from "../../services/holidayService";
 import { jest } from "@jest/globals";
+import type { PaginatedUserResponse } from "../../types/user.types";
+import type { PaginatedScheduleResponse } from "../../types/schedule.types";
+import type { OfficeLocation, Department, Holiday, PaginatedResponse } from "../../types/organization.types";
 
 jest.mock("../../services/scheduleService");
 jest.mock("../../services/userService");
@@ -20,17 +23,17 @@ jest.mock("./DaySchedulePanel", () => () => <div data-testid="day-panel">DayPane
 
 describe("ScheduleList Page", () => {
     beforeEach(() => {
-        (scheduleService.getAll as any).mockResolvedValue({
+        jest.mocked(scheduleService.getAll).mockResolvedValue({
             data: [],
-            pagination: { pages: 1, total: 0 }
-        });
-        (scheduleService.getByDateSummary as any).mockResolvedValue({
+            pagination: { pages: 1, total: 0, page: 1, limit: 10 }
+        } as unknown as PaginatedScheduleResponse);
+        jest.mocked(scheduleService.getByDateSummary).mockResolvedValue({
             data: { summary: { shiftData: {} } }
-        });
-        (userService.getAll as any).mockResolvedValue({ users: [], total: 0 });
-        (locationService.getAll as any).mockResolvedValue({ data: [] });
-        (departmentService.getAll as any).mockResolvedValue({ data: [] });
-        (holidayService.getAll as any).mockResolvedValue({ data: [] });
+        } as Record<string, unknown>); // Type depends on scheduleService.getByDateSummary definition
+        jest.mocked(userService.getAll).mockResolvedValue({ users: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedUserResponse);
+        jest.mocked(locationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<OfficeLocation>);
+        jest.mocked(departmentService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Department>);
+        jest.mocked(holidayService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Holiday>);
     });
 
     it("renders loading state initially", () => {

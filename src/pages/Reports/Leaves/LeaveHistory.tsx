@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { Download } from "lucide-react";
 import { leaveService } from "../../../services/leaveService";
-import type { LeaveRequest, LeaveRequestQueryParams } from "../../../services/leaveService";
+import type { LeaveRequest, LeaveRequestQueryParams, LeaveStatus } from "../../../services/leaveService";
 import Table from "../../../components/common/Table";
 import Button from "../../../components/common/Button";
 import UnifiedFilter from "../../../components/common/Filter/UnifiedFilter";
@@ -43,8 +43,8 @@ const LeaveHistoryReport: React.FC = () => {
             const params: LeaveRequestQueryParams = {
                 page,
                 limit: 10,
-                status: statusFilter === "all" ? undefined : (statusFilter as any),
-                search: searchTerm || undefined
+                status: statusFilter === "all" ? "all" : (statusFilter as LeaveStatus),
+                search: searchTerm.trim() || undefined
             };
 
             const resp = await leaveService.getRequests(params);
@@ -79,7 +79,7 @@ const LeaveHistoryReport: React.FC = () => {
         {
             _id: "employee",
             label: "Employee",
-            format: (_: any, row: LeaveRequest) => {
+            format: (_: unknown, row: LeaveRequest) => {
                 const employee = typeof row.employeeId === 'object' ? row.employeeId : null;
                 // const employeeIdString = employee ? employee.id : row.employeeId;
 
@@ -104,16 +104,16 @@ const LeaveHistoryReport: React.FC = () => {
         {
             _id: "leaveType",
             label: "Type",
-            format: (val: string) => (
+            format: (val: unknown) => (
                 <span className="text-xs font-bold uppercase tracking-wider text-primary bg-primary/5 px-2 py-1 rounded-lg">
-                    {val}
+                    {val as string}
                 </span>
             )
         },
         {
             _id: "startDate",
             label: "Duration",
-            format: (_: any, row: LeaveRequest) => (
+            format: (_: unknown, row: LeaveRequest) => (
                 <div className="flex flex-col">
                     <span className="text-xs font-bold text-foreground-secondary">
                         {new Date(row.startDate).toLocaleDateString()} - {new Date(row.endDate).toLocaleDateString()}
@@ -125,18 +125,19 @@ const LeaveHistoryReport: React.FC = () => {
         {
             _id: "status",
             label: "Status",
-            format: (val: string) => {
+            format: (val: unknown) => {
                 const variants: Record<string, string> = {
                     approved: "bg-success/10 text-success border-success/20",
                     pending: "bg-warning/10 text-warning border-warning/20",
                     rejected: "bg-error/10 text-error border-error/20"
                 };
+                const statusStr = String(val).toLowerCase();
                 return (
                     <span className={cn(
                         "px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-widest border",
-                        variants[val.toLowerCase()] || "bg-muted text-foreground-tertiary border-border"
+                        variants[statusStr] || "bg-muted text-foreground-tertiary border-border"
                     )}>
-                        {val}
+                        {val as string}
                     </span>
                 );
             }
@@ -144,9 +145,9 @@ const LeaveHistoryReport: React.FC = () => {
         {
             _id: "createdAt",
             label: "Applied On",
-            format: (val: string) => (
+            format: (val: unknown) => (
                 <span className="text-xs text-foreground-tertiary">
-                    {new Date(val).toLocaleDateString()}
+                    {new Date(val as string).toLocaleDateString()}
                 </span>
             )
         }
@@ -186,7 +187,12 @@ const LeaveHistoryReport: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="md:col-span-2">
-                    <SearchInput value={searchTerm} onChange={setSearchTerm} placeholder="Search by name or employee ID..." />
+                    <SearchInput
+                        value={searchTerm}
+                        onChange={setSearchTerm}
+                        searchKey="leave-history-report"
+                        placeholder="Search by name or employee ID..."
+                    />
                 </div>
                 <UnifiedFilter
                     filters={[

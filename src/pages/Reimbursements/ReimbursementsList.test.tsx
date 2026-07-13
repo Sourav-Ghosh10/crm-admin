@@ -4,6 +4,7 @@ import ReimbursementsList from "./ReimbursementsList";
 import { reimbursementService } from "../../services/reimbursementService";
 import { reimbursementTypeService } from "../../services/reimbursementTypeService";
 import { jest } from "@jest/globals";
+import type { Reimbursement, PaginatedReimbursementResponse, ReimbursementType } from "../../types/reimbursement.types";
 
 jest.mock("../../services/reimbursementService");
 jest.mock("../../services/reimbursementTypeService");
@@ -12,11 +13,13 @@ jest.mock("../../services/reimbursementTypeService");
 jest.mock("date-fns", () => ({
     format: () => "Jan 01, 2024",
     parseISO: (str: string) => new Date(str),
+    startOfMonth: (d: Date) => d,
+    endOfMonth: (d: Date) => d,
 }));
 
 describe("ReimbursementsList Page", () => {
     beforeEach(() => {
-        (reimbursementService.getAll as any).mockResolvedValue({
+        jest.mocked(reimbursementService.getAll).mockResolvedValue({
             data: [
                 {
                     _id: "1",
@@ -45,15 +48,15 @@ describe("ReimbursementsList Page", () => {
                         firstName: "Jane",
                         lastName: "Smith"
                     }
-                }
+                } as unknown as Reimbursement
             ],
-            pagination: { pages: 1, total: 2 }
-        });
+            pagination: { pages: 1, total: 2, page: 1, limit: 10 }
+        } as unknown as PaginatedReimbursementResponse);
 
-        (reimbursementTypeService.getActive as any).mockResolvedValue([
+        jest.mocked(reimbursementTypeService.getActive).mockResolvedValue([
             { name: "Travel", _id: "type1" },
             { name: "Meals", _id: "type2" }
-        ]);
+        ] as unknown as ReimbursementType[]);
     });
 
     it("renders loading state initially", () => {

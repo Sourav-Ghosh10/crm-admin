@@ -20,10 +20,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/commo
 import Button from "../../components/common/Button";
 import BackButton from "../../components/common/BackButton";
 import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
+import TextArea from "../../components/common/Input/TextArea";
 import { format } from "date-fns";
 import { toast } from "react-hot-toast";
 import { useConfirmation } from "../../hooks/useConfirmation";
 import Avatar from "../../components/common/Avatar";
+import TimezoneToggle from "../../components/common/TimezoneToggle";
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
 
 const ReimbursementDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -34,6 +38,10 @@ const ReimbursementDetails: React.FC = () => {
     const [actionLoading, setActionLoading] = useState(false);
     const [rejectionReason, setRejectionReason] = useState("");
     const [isRejecting, setIsRejecting] = useState(false);
+
+    // Permissions
+    const { hasPermission: canApprove } = usePermissions(PERMISSIONS.REIMBURSEMENT_APPROVE);
+    const { hasPermission: canReject } = usePermissions(PERMISSIONS.REIMBURSEMENT_REJECT);
 
     useEffect(() => {
         const fetchDetails = async () => {
@@ -75,12 +83,48 @@ const ReimbursementDetails: React.FC = () => {
                 rejectionReason: status === 'rejected' ? rejectionReason : undefined
             });
             toast.success(`Request ${status} successfully!`);
-            navigate("/reimbursements");
+            navigate(-1);
         } catch (error) {
             console.error(`Failed to ${status} reimbursement:`, error);
             toast.error(`Failed to ${status} reimbursement.`);
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleDownload = async (url: string, fileName: string) => {
+        try {
+            // If it's a data URL, we can download it directly
+            if (url.startsWith('data:')) {
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                return;
+            }
+
+            // For external URLs, fetch as blob to force download
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Network response was not ok');
+            const blob = await response.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success("Download started");
+        } catch (error) {
+            console.error("Download failed:", error);
+            // Fallback: open in new tab
+            window.open(url, '_blank', 'noopener,noreferrer');
+            toast.error("Download failed. Opening in new tab.");
         }
     };
 
@@ -115,7 +159,7 @@ const ReimbursementDetails: React.FC = () => {
             {/* Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6">
                 <div className="space-y-1">
-                    <BackButton onClick={() => navigate("/reimbursements")} label="Back to Requests" className="mb-4" />
+                    <BackButton label="Back to Requests" className="mb-4" />
                     <div className="flex flex-wrap items-center gap-4">
                         <h1 className="text-3xl sm:text-5xl font-black text-foreground tracking-tighter shrink-0">
                             Request Details
@@ -135,26 +179,33 @@ const ReimbursementDetails: React.FC = () => {
                     </p>
                 </div>
 
-                {record.status === 'pending' && !isRejecting && (
-                    <div className="flex gap-3 w-full sm:w-auto">
-                        <Button
-                            variant="outline"
-                            className="flex-1 sm:flex-none h-14 px-8 border-error/20 text-error hover:bg-error/5"
-                            onClick={() => setIsRejecting(true)}
-                            startIcon={<XCircle className="w-5 h-5" />}
-                        >
-                            Reject
-                        </Button>
-                        <Button
-                            className="flex-1 sm:flex-none h-14 px-8"
-                            onClick={() => handleAction('approved')}
-                            isLoading={actionLoading}
-                            startIcon={<CheckCircle2 className="w-5 h-5" />}
-                        >
-                            Approve
-                        </Button>
-                    </div>
-                )}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <TimezoneToggle variant="horizontal" />
+                    {record.status === 'pending' && !isRejecting && (
+                        <div className="flex gap-3 w-full sm:w-auto">
+                            {canReject && (
+                                <Button
+                                    variant="destructiveOutline"
+                                    className="flex-1 sm:flex-none h-14 px-8 transition-all"
+                                    onClick={() => setIsRejecting(true)}
+                                    startIcon={<XCircle className="w-5 h-5" />}
+                                >
+                                    Reject
+                                </Button>
+                            )}
+                            {canApprove && (
+                                <Button
+                                    className="flex-1 sm:flex-none h-14 px-8"
+                                    onClick={() => handleAction('approved')}
+                                    isLoading={actionLoading}
+                                    startIcon={<CheckCircle2 className="w-5 h-5" />}
+                                >
+                                    Approve
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {isRejecting && (
@@ -163,11 +214,13 @@ const ReimbursementDetails: React.FC = () => {
                         <AlertCircle className="w-6 h-6" />
                         <h3 className="font-black text-lg uppercase tracking-tight">Rejection Details</h3>
                     </div>
-                    <textarea
+                    <TextArea
+                        label="Rejection Reason"
                         value={rejectionReason}
                         onChange={(e) => setRejectionReason(e.target.value)}
                         placeholder="Enter the reason for rejecting this request..."
-                        className="w-full bg-surface border border-error/20 rounded-2xl p-4 text-sm font-bold focus:outline-none focus:ring-4 focus:ring-error/10 transition-all min-h-[120px]"
+                        maxLength={500}
+                        rows={4}
                     />
                     <div className="flex justify-end gap-3">
                         <Button variant="ghost" className="text-foreground-tertiary" onClick={() => setIsRejecting(false)}>Cancel</Button>
@@ -279,7 +332,15 @@ const ReimbursementDetails: React.FC = () => {
                                                                 Click to Full View
                                                             </div>
                                                         </div>
-                                                        <div className="absolute top-3 right-3 bg-surface/90 backdrop-blur rounded-xl p-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div
+                                                            className="absolute top-3 right-3 bg-surface/90 backdrop-blur rounded-xl p-2 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all z-20 hover:bg-white hover:scale-110 active:scale-95"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                handleDownload(url, name);
+                                                            }}
+                                                            title="Download Attachment"
+                                                        >
                                                             <Download className="w-4 h-4 text-primary" />
                                                         </div>
                                                     </a>
@@ -308,7 +369,17 @@ const ReimbursementDetails: React.FC = () => {
                                                         <span className="text-[10px] font-black uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                                                             View File <ArrowUpRight className="w-3 h-3" />
                                                         </span>
-                                                        <Download className="w-4 h-4 text-foreground-tertiary/40 group-hover:text-primary transition-colors" />
+                                                        <div
+                                                            className="p-2 -m-2 hover:bg-primary/10 rounded-xl transition-all z-20 hover:scale-110 active:scale-95"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                handleDownload(url, name);
+                                                            }}
+                                                            title="Download Document"
+                                                        >
+                                                            <Download className="w-4 h-4 text-foreground-tertiary/40 group-hover:text-primary transition-colors" />
+                                                        </div>
                                                     </div>
                                                 </a>
                                             );

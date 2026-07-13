@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import AttendanceDetails from "./AttendanceDetails";
 import { attendanceService } from "../../services/attendanceService";
+import type { Attendance } from "../../types/attendance.types";
 import { jest } from "@jest/globals";
 
 jest.mock("../../services/attendanceService");
@@ -57,7 +58,7 @@ describe("AttendanceDetails Page", () => {
     };
 
     beforeEach(() => {
-        (attendanceService.getByDateAndUser as any).mockResolvedValue(mockRecord);
+        jest.mocked(attendanceService.getByDateAndUser).mockResolvedValue(mockRecord as unknown as Attendance);
     });
 
     it("renders loading state initially", () => {
@@ -91,10 +92,10 @@ describe("AttendanceDetails Page", () => {
     });
 
     it("displays late status if applicable", async () => {
-        (attendanceService.getByDateAndUser as any).mockResolvedValue({
+        jest.mocked(attendanceService.getByDateAndUser).mockResolvedValue({
             ...mockRecord,
             isLate: true
-        });
+        } as unknown as Attendance);
 
         render(
             <MemoryRouter initialEntries={["/attendance/2024-01-01/user1"]}>

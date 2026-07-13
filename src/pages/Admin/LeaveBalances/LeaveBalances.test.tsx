@@ -4,11 +4,13 @@ import LeaveBalances from "./LeaveBalances";
 import { userService } from "../../../services/userService";
 import { leaveService } from "../../../services/leaveService";
 import { jest } from "@jest/globals";
+import type { User, PaginatedUserResponse } from "../../../types/user.types";
+import type { EmployeeLeaveBalanceResponse } from "../../../types/leave.types";
 
 jest.mock("../../../services/userService");
 jest.mock("../../../services/leaveService");
 jest.mock("../../../hooks/useDebounce", () => ({
-    useDebounce: (value: any) => value,
+    useDebounce: <T,>(value: T) => value,
 }));
 
 describe("LeaveBalances Page", () => {
@@ -31,9 +33,14 @@ describe("LeaveBalances Page", () => {
     ];
 
     beforeEach(() => {
-        (userService.getAll as any).mockResolvedValue({ users: [mockUser], total: 1 });
-        (userService.getById as any).mockResolvedValue(mockUser);
-        (leaveService.getEmployeeBalance as any).mockResolvedValue({ balances: mockBalances });
+        jest.mocked(userService.getAll).mockResolvedValue({ users: [mockUser], total: 1, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedUserResponse);
+        jest.mocked(userService.getById).mockResolvedValue(mockUser as unknown as User);
+        jest.mocked(leaveService.getEmployeeBalance).mockResolvedValue({ 
+            balances: mockBalances,
+            userId: "u1",
+            name: "John Doe",
+            department: "Engineering"
+        } as unknown as EmployeeLeaveBalanceResponse);
     });
 
     it("renders search input", () => {

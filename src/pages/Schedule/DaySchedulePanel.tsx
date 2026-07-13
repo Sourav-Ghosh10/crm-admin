@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { X, Edit2, Clock, Trash2, Search, ChevronLeft, ChevronRight, Info, Palmtree, Maximize2, Minimize2 } from 'lucide-react';
+import { X, Edit2, Clock, Trash2, ChevronLeft, ChevronRight, Info, Palmtree, Maximize2, Minimize2 } from 'lucide-react';
 import { format, differenceInHours, parse } from 'date-fns';
 // import { formatAdminDate, getAdminDateKey } from '../../utils/dateUtils';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -10,7 +10,14 @@ import Table from '../../components/common/Table/Table';
 import EmptyState from '../../components/common/EmptyState/EmptyState';
 import Avatar from '../../components/common/Avatar';
 import TimezoneDualView from '../../components/common/TimezoneDualView';
+import TimezoneToggle from '../../components/common/TimezoneToggle';
+import { getAdminDateKey, getZonedDate } from '../../utils/dateUtils';
+import { useAppSelector } from '../../store/hooks';
+import { isSameDay, parseISO } from 'date-fns';
 import type { EmployeeRoster, ShiftData } from '../../types/schedule.types';
+import { usePermissions } from "../../hooks/usePermissions";
+import { PERMISSIONS } from "../../config/permissions";
+import { SearchInput } from '../../components/common/Search/SearchInput';
 
 interface DaySchedulePanelProps {
     isOpen: boolean;
@@ -26,6 +33,17 @@ interface DaySchedulePanelProps {
     totalPages?: number;
     onPageChange?: (page: number) => void;
     onSearchChange?: (search: string) => void;
+}
+
+interface ScheduleRow {
+    roster: EmployeeRoster;
+    shift: ShiftData;
+    tIdx: number;
+    start?: string;
+    end?: string;
+    totalShiftSlots: number;
+    isUnavailable: boolean;
+    _id: string;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -45,6 +63,8 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
     onPageChange,
     onSearchChange,
 }) => {
+    const adminTimezone = useAppSelector((state) => state.ui.selectedTimezone);
+    const { hasPermission: canManageSchedule } = usePermissions(PERMISSIONS.SCHEDULE_MANAGE);
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 500);
     const [localCurrentPage, setLocalCurrentPage] = useState(1);
@@ -132,7 +152,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
     // Trigger server-side search when debounced term changes
     React.useEffect(() => {
         if (isServerSideSearch) {
-            onSearchChange?.(debouncedSearchTerm);
+            onSearchChange?.(debouncedSearchTerm.trim());
         }
     }, [debouncedSearchTerm, isServerSideSearch, onSearchChange]);
 
@@ -145,12 +165,19 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
 
     const employeesWithShifts = useMemo(() => {
         if (!selectedDate) return [];
-        const targetDateKey = format(selectedDate, "yyyy-MM-dd");
+        const targetDateKey = getAdminDateKey(selectedDate);
 
         return rosters
             .map(roster => {
                 const shiftsForDay = Object.entries(roster.shiftData || {})
-                    .filter(([key]) => key === targetDateKey)
+                    .filter(([key]) => {
+                        if (key === targetDateKey) return true;
+                        try {
+                            return isSameDay(parseISO(key), selectedDate);
+                        } catch {
+                            return false;
+                        }
+                    })
                     .map(([key, shift]) => ({ ...shift, date: key }));
                 return {
                     roster,
@@ -168,7 +195,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
 
         // Local filtering when no server-side search
         if (!searchTerm.trim()) return employeesWithShifts;
-        const lowerSearch = searchTerm.toLowerCase().trim();
+        const lowerSearch = searchTerm.trim().toLowerCase();
         return employeesWithShifts.filter(({ roster }) => {
             const firstName = roster.Info?.firstName?.toLowerCase() || '';
             const lastName = roster.Info?.lastName?.toLowerCase() || '';
@@ -200,14 +227,14 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
     return (
         <>
             <div
-                className={cn('fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300', isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none')}
+                className={cn('fixed inset-0 bg-black/40 backdrop-blur-sm z-70 transition-opacity duration-300', isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none')}
                 onClick={onClose}
             />
 
             <div
                 ref={panelRef}
                 style={{ width: (window.innerWidth < 640 || isMaximized) ? '100%' : `${panelWidth}px` }}
-                className={cn('fixed top-0 right-0 h-full bg-background border-l border-border/50 shadow-2xl z-50 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)', isOpen ? 'translate-x-0' : 'translate-x-full')}
+                className={cn('fixed top-0 right-0 h-full bg-background border-l border-border/50 shadow-2xl z-70 transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)', isOpen ? 'translate-x-0' : 'translate-x-full')}
             >
                 {/* Resize Handle */}
                 <div
@@ -223,6 +250,9 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                             <div>
                                 <h2 className="text-2xl font-black text-foreground tracking-tight">{format(selectedDate, 'EEEE')}</h2>
                                 <p className="text-sm font-bold text-foreground-tertiary">{format(selectedDate, 'MMMM d, yyyy')}</p>
+                                <div className="mt-4">
+                                    <TimezoneToggle variant="horizontal" />
+                                </div>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
@@ -261,16 +291,12 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                     {/* Search */}
                     {viewType !== 'calendar' && (employeesWithShifts.length > 1 || searchTerm !== '') && (
                         <div className="p-4 border-b border-border/30">
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-foreground-tertiary" />
-                                <input
-                                    type="text"
-                                    placeholder="Search employees..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-border focus:ring-2 focus:ring-primary/20 outline-none transition-all font-medium text-sm"
-                                />
-                            </div>
+                            <SearchInput
+                                value={searchTerm}
+                                onChange={(val) => setSearchTerm(val)}
+                                searchKey="day-schedule-panel-search"
+                                placeholder="Search employees..."
+                            />
                         </div>
                     )}
 
@@ -290,7 +316,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                         {
                                             _id: 'employee',
                                             label: 'Employee',
-                                            format: (_, row: any) => (
+                                            format: (_, row: ScheduleRow) => (
                                                 <div className="flex items-center gap-3">
                                                     <Avatar
                                                         src={row.roster.Info?.profilePicture}
@@ -308,7 +334,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                         {
                                             _id: 'shiftType',
                                             label: 'Type',
-                                            format: (_, row: any) => (
+                                            format: (_, row: ScheduleRow) => (
                                                 <div className="flex items-center gap-2">
                                                     <div className={cn(
                                                         "px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border",
@@ -325,18 +351,14 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                         {
                                             _id: 'timing',
                                             label: 'Scheduled Timing',
-                                            format: (_, row: any) => {
+                                            format: (_, row: ScheduleRow) => {
                                                 if (row.shift.shiftType === 'off' || row.shift.shiftType === 'Leave' || row.shift.shiftType === 'Holiday') return <span className="text-xs text-foreground-tertiary">N/A</span>;
 
                                                 const employeeTZ = row.roster.employment?.timezone || 'Asia/Kolkata';
-                                                const adminTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
                                                 const combine = (timeStr?: string) => {
                                                     if (!timeStr || !selectedDate) return undefined;
-                                                    const [h, m] = timeStr.split(':').map(Number);
-                                                    const d = new Date(selectedDate);
-                                                    d.setHours(h, m, 0, 0);
-                                                    return d;
+                                                    return getZonedDate(selectedDate, timeStr, employeeTZ);
                                                 };
 
                                                 const sDate = combine(row.start);
@@ -349,7 +371,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                         startTime={sDate}
                                                         endTime={eDate}
                                                         primaryTimezone={employeeTZ}
-                                                        secondaryTimezone={adminTZ}
+                                                        secondaryTimezone={adminTimezone}
                                                         variant="minimal"
                                                     />
                                                 );
@@ -358,7 +380,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                         {
                                             _id: 'hours',
                                             label: 'Hours',
-                                            format: (_, row: any) => {
+                                            format: (_, row: ScheduleRow) => {
                                                 const hours = calculateHours(row.start || "", row.end || "");
                                                 if (hours === 0) return <span className="text-xs text-foreground-tertiary">-</span>;
                                                 return (
@@ -372,9 +394,9 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                             _id: 'actions',
                                             label: 'Actions',
                                             align: 'right',
-                                            format: (_, row: any) => (
+                                            format: (_, row: ScheduleRow) => (
                                                 <div className="flex justify-end gap-1">
-                                                    {(row.shift.shiftType !== 'Leave' && row.shift.shiftType !== 'Holiday') && (
+                                                    {canManageSchedule && (row.shift.shiftType !== 'Leave' && row.shift.shiftType !== 'Holiday') && (
                                                         <>
                                                             <button onClick={() => onEditShift(row.roster.employeeId, row.shift, row.tIdx)} className="p-1.5 hover:bg-primary/10 text-primary rounded-lg transition-colors">
                                                                 <Edit2 className="w-3.5 h-3.5" />
@@ -386,7 +408,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                             )}
                                                         </>
                                                     )}
-                                                    {row.tIdx === 0 && (
+                                                    {canManageSchedule && row.tIdx === 0 && !row.isUnavailable && (
                                                         <Button variant="ghost" size="sm" onClick={() => onAddShift(row.roster.employeeId)} className="h-8 px-2 text-[10px] font-black">
                                                             + ADD
                                                         </Button>
@@ -402,10 +424,12 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                             return acc + (isOut && times.length === 0 ? 1 : times.length);
                                         }, 0);
 
+                                        const isUnavailable = shifts.some(s => s.shiftType === 'Leave' || s.shiftType === 'Holiday');
+
                                         return shifts.flatMap((shift) => {
-                                            const isOff = shift.shiftType === 'off';
+                                            const isOutDay = shift.shiftType === 'off' || shift.shiftType === 'Leave' || shift.shiftType === 'Holiday';
                                             const startTimes = Array.isArray(shift.startTime) ? shift.startTime : [shift.startTime].filter(Boolean);
-                                            const renderTimes = isOff && startTimes.length === 0 ? [undefined] : startTimes;
+                                            const renderTimes = isOutDay && startTimes.length === 0 ? [undefined] : startTimes;
 
                                             return renderTimes.map((start, tIdx) => {
                                                 const end = Array.isArray(shift.endTime) ? shift.endTime[tIdx] : (tIdx === 0 ? shift.endTime : undefined);
@@ -416,6 +440,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                     start,
                                                     end,
                                                     totalShiftSlots,
+                                                    isUnavailable,
                                                     _id: `${roster._id}-${shift._id}-${tIdx}`
                                                 };
                                             });
@@ -469,6 +494,8 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                         );
                                                     }
 
+                                                    if (!canManageSchedule) return null;
+
                                                     return (
                                                         <Button variant="ghost" size="sm" onClick={() => onAddShift(roster.employeeId)} className="rounded-lg h-8 px-2 text-[10px] font-black">
                                                             + ADD
@@ -486,11 +513,12 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                     }, 0);
 
                                                     return shifts.flatMap((shift) => {
+                                                        const isOutDay = shift.shiftType === 'off' || shift.shiftType === 'Leave' || shift.shiftType === 'Holiday';
                                                         const isOff = shift.shiftType === 'off';
                                                         const startTimes = Array.isArray(shift.startTime) ? shift.startTime : [shift.startTime].filter(Boolean);
 
-                                                        // Ensure at least one loop for OFF shifts even if they have no times
-                                                        const renderTimes = isOff && startTimes.length === 0 ? [undefined] : startTimes;
+                                                        // Ensure at least one loop for OUT/OFF shifts even if they have no times
+                                                        const renderTimes = isOutDay && startTimes.length === 0 ? [undefined] : startTimes;
 
                                                         return renderTimes.map((start, tIdx) => {
                                                             const end = Array.isArray(shift.endTime) ? shift.endTime[tIdx] : (tIdx === 0 ? shift.endTime : undefined);
@@ -502,7 +530,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                                     <div className="flex items-center justify-between">
                                                                         <div className="flex items-center gap-2">
                                                                             <div className="px-2 py-0.5 rounded bg-primary text-white text-[10px] font-black uppercase tracking-widest">
-                                                                                {isOff || shift.shiftType === 'Leave' || shift.shiftType === 'Holiday' ? <></> : `Shift ${tIdx + 1}`}
+                                                                                {isOutDay ? <></> : `Shift ${tIdx + 1}`}
                                                                             </div>
                                                                             <span className="text-xs font-bold text-foreground">
                                                                                 {shift.shiftType === 'Leave' ? 'ON LEAVE' : shift.shiftType === 'Holiday' ? 'HOLIDAY' : isOff ? 'DAY OFF' : 'SHIFT'}
@@ -511,6 +539,8 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                                         {(() => {
                                                                             const isOut = shift.shiftType === 'Leave' || shift.shiftType === 'Holiday';
                                                                             if (isOut) return null;
+
+                                                                            if (!canManageSchedule) return null;
 
                                                                             return (
                                                                                 <div className="flex gap-2">
@@ -535,14 +565,10 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                                                     <div className="text-[9px] font-black text-foreground-tertiary uppercase mb-1">Scheduled</div>
                                                                                     {(() => {
                                                                                         const employeeTZ = roster.employment?.timezone || 'Asia/Kolkata';
-                                                                                        const adminTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
                                                                                         const combine = (timeStr?: string) => {
                                                                                             if (!timeStr || !selectedDate) return undefined;
-                                                                                            const [h, m] = timeStr.split(':').map(Number);
-                                                                                            const d = new Date(selectedDate);
-                                                                                            d.setHours(h, m, 0, 0);
-                                                                                            return d;
+                                                                                            return getZonedDate(selectedDate, timeStr, employeeTZ);
                                                                                         };
 
                                                                                         const sDate = combine(start);
@@ -555,7 +581,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                                                                 startTime={sDate}
                                                                                                 endTime={eDate}
                                                                                                 primaryTimezone={employeeTZ}
-                                                                                                secondaryTimezone={adminTZ}
+                                                                                                secondaryTimezone={adminTimezone}
                                                                                                 variant="minimal"
                                                                                             />
                                                                                         );
@@ -575,7 +601,7 @@ const DaySchedulePanel: React.FC<DaySchedulePanelProps> = ({
                                                                             <div className="space-y-1">
                                                                                 <div className="text-[10px] font-bold text-foreground flex justify-between">
                                                                                     <span className="text-foreground-tertiary uppercase">Event</span>
-                                                                                    <span className="font-black text-amber-600">{shift.holidayName || 'N/A'}</span>
+                                                                                    <span className="font-black text-amber-600 truncate max-w-[150px]" title={shift.holidayName || ""}>{shift.holidayName || 'N/A'}</span>
                                                                                 </div>
                                                                                 <div className="mt-2 text-[10px] font-bold text-foreground">
                                                                                     <span className="text-foreground-tertiary uppercase block mb-1">Notice</span>

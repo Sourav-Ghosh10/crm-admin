@@ -8,6 +8,7 @@ interface StatCardProps {
     trend?: { value: string; positive: boolean };
     color: "primary" | "success" | "warning" | "error" | "info";
     className?: string;
+    onClick?: () => void;
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -17,6 +18,7 @@ const StatCard: React.FC<StatCardProps> = ({
     trend,
     color,
     className,
+    onClick,
 }) => {
     const colorVariants = {
         primary: "text-primary border-primary bg-primary/10",
@@ -35,11 +37,15 @@ const StatCard: React.FC<StatCardProps> = ({
     };
 
     return (
-        <div className={cn(
+        <div 
+            onClick={onClick}
+            className={cn(
             "bg-surface p-6 rounded-[2rem] border border-border/40 shadow-xl transition-all duration-300 hover:shadow-2xl flex flex-col justify-between",
+            onClick && "cursor-pointer active:scale-95",
             shadowVariants[color],
             className
         )}>
+
             <div className="flex justify-between items-start mb-4">
                 <div className={cn(
                     "w-12 h-12 rounded-2xl flex items-center justify-center border border-border/20",

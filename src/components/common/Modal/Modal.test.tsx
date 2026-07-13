@@ -38,14 +38,14 @@ describe("Modal Component", () => {
         expect(onCloseMock).toHaveBeenCalledTimes(1);
     });
 
-    it("calls onClose when escape key is pressed", () => {
+    it("does not call onClose when escape key is pressed", () => {
         render(
             <Modal open={true} onClose={onCloseMock} title="Test Modal">
                 <div>Content</div>
             </Modal>
         );
         fireEvent.keyDown(document, { key: "Escape" });
-        expect(onCloseMock).toHaveBeenCalledTimes(1);
+        expect(onCloseMock).not.toHaveBeenCalled();
     });
 
     it("renders actions if provided", () => {

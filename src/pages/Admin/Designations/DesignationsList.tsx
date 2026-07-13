@@ -2,10 +2,8 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
     Plus,
     Edit,
-
-    CheckCircle2,
-    XCircle,
-    Trash2,
+    Archive,
+    RefreshCw,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -22,6 +20,8 @@ import FilterDropdown from "../../../components/common/Filter/FilterDropdown";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import Pagination from "../../../components/common/Pagination";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const DesignationsList: React.FC = () => {
     const [designations, setDesignations] = useState<Designation[]>([]);
@@ -48,13 +48,15 @@ const DesignationsList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentDesignation, setCurrentDesignation] = useState<Partial<Designation> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.DESIGNATION_MANAGE);
+
     const fetchData = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
                 department: undefined,
             };
@@ -69,7 +71,7 @@ const DesignationsList: React.FC = () => {
 
 
             // Only disable search if there's no data AND no active filters/search
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all";
             if (!hasActiveFilters && designationRes.total === 0) {
                 setHasData(false);
             } else if (designationRes.total > 0) {
@@ -101,42 +103,19 @@ const DesignationsList: React.FC = () => {
 
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Designation`,
-            message: `Are you sure you want to ${action} "${displayName}"?`,
+            message: `Are you sure you want to ${action} "${displayName}"? ${designation.isActive ? "This will archive the designation." : ""}`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: designation.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await designationService.update(designation._id, { isActive: !designation.isActive });
+                await designationService.toggleStatus(designation._id, !designation.isActive);
                 fetchData(page);
             } catch (error) {
                 console.error(`Failed to ${action} designation: `, error);
 
                 const errorMessage = getErrorMessage(error, `Failed to ${action} designation`);
-                alert(errorMessage);
-            }
-        }
-    };
-
-    const handleDelete = async (designation: Designation) => {
-        const displayName = designation.title || designation.name || "Untitled";
-
-        const confirmed = await confirm({
-            title: 'Delete Designation',
-            message: `Are you sure you want to PERMANENTLY delete "${displayName}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
-
-        if (confirmed) {
-            try {
-                await designationService.delete(designation._id);
-                fetchData(page);
-            } catch (error) {
-                console.error(`Failed to delete designation: `, error);
-
-                const errorMessage = getErrorMessage(error, "Failed to delete designation");
                 alert(errorMessage);
             }
         }
@@ -241,19 +220,14 @@ const DesignationsList: React.FC = () => {
                         )}
                         title={row.isActive ? "Deactivate" : "Activate"}
                     >
-                        {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Designation"
-                    >
-                        <Trash2 className="w-4 h-4" />
+                        {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -276,45 +250,39 @@ const DesignationsList: React.FC = () => {
                         Define professional roles and responsibilities.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Designation
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Designation
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="designations"
                         placeholder="Search designations..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
                     />
                 </div>
 
-                {/* <FilterDropdown
-                    value={deptFilter}
-                    onChange={setDeptFilter}
-                    className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest"
-                    options={[
-                        { value: "all", label: "All Departments" },
-                        ...departments.map(dept => ({ value: dept.name, label: dept.name }))
-                    ]}
-                /> */}
-
-                <FilterDropdown
-                    value={statusFilter}
-                    onChange={setStatusFilter}
-                    className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest"
-                    options={[
-                        { value: "all", label: "All Status" },
-                        { value: "active", label: "Active Only" },
-                        { value: "inactive", label: "Inactive Only" },
-                    ]}
-                />
+                <div className="shrink-0 w-full lg:w-auto">
+                    <FilterDropdown
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        className="h-[42px] rounded-2xl border-border/50 font-black text-xs uppercase tracking-widest w-full lg:w-[200px]"
+                        options={[
+                            { value: "all", label: "All Status" },
+                            { value: "active", label: "Active Only" },
+                            { value: "inactive", label: "Inactive Only" },
+                        ]}
+                    />
+                </div>
             </div>
 
             <div className="bg-surface rounded-xl sm:rounded-xl border border-border/40 shadow-2xl shadow-primary/5 overflow-hidden relative min-h-[400px]">
@@ -325,7 +293,7 @@ const DesignationsList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={designations}
                     className="border-none"
                     emptyState={

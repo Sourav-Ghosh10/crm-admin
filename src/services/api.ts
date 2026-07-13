@@ -1,14 +1,18 @@
 import axios from "axios";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { apiCache, TTL_CONFIG } from "../utils/apiCache";
+import { setSessionReplacedOpen } from "../store/slices/uiSlice";
 
 import { getApiBaseUrl } from "../utils/env";
 
 const API_BASE_URL = getApiBaseUrl();
 
+console.log('[API] Environment Base URL:', import.meta.env.BASE_URL);
+console.log('[API] API Base URL:', API_BASE_URL);
+
 // Token storage keys
-const ACCESS_TOKEN_KEY = "accessToken";
-const REFRESH_TOKEN_KEY = "refreshToken";
+const ACCESS_TOKEN_KEY = "hrm_admin_accessToken";
+const REFRESH_TOKEN_KEY = "hrm_admin_refreshToken";
 
 export const tokenStorage = {
   getAccessToken: () => localStorage.getItem(ACCESS_TOKEN_KEY),
@@ -31,6 +35,7 @@ const forceLogout = async (
   reason?: "session_invalidated",
   message?: string,
 ) => {
+  console.warn('[API] Forcing logout. Reason:', reason, 'Message:', message);
   if (isLoggingOut) return;
   isLoggingOut = true;
   // 1. Clear tokens IMMEDIATELY (don't wait for async operations)
@@ -44,8 +49,9 @@ const forceLogout = async (
     }
   }
 
-  // 3. Redirect IMMEDIATELY (don't wait for notification unregister)
-  window.location.href = "/login";
+  const redirectUrl = `/${import.meta.env.BASE_URL}/login`.replace(/\/+/g, "/");
+  console.log('[API] Forcing logout. Redirecting to:', redirectUrl);
+  window.location.href = redirectUrl;
 
   // 4. Unregister notification token in background (non-blocking)
   try {
@@ -123,6 +129,8 @@ const invalidateCacheAfterMutation = (url: string, method: string) => {
     apiCache.removePattern('/announcements');
   } else if (url.includes('/roles')) {
     apiCache.removePattern('/roles');
+  } else if (url.includes('/incidents')) {
+    apiCache.removePattern('/incidents');
   }
 };
 
@@ -159,10 +167,16 @@ const processQueue = (
 // Request interceptor - add auth token and check cache
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Add auth token
+    // Add auth token and timezone
     const token = tokenStorage.getAccessToken();
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const timezone = localStorage.getItem('admin_timezone') || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+
+    if (config.headers) {
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+        console.log('[API] Attaching token to request:', config.url, 'Token prefix:', token.substring(0, 10) + '...');
+      }
+      config.headers['X-Timezone'] = timezone;
     }
 
     // Check cache for GET requests
@@ -242,7 +256,26 @@ api.interceptors.response.use(
 
     // Handle 401 Unauthorized - Only attempt refresh if it's not already a retry
     if (error.response?.status === 401) {
+      console.log('[API] 401 Unauthorized Details:', {
+        url: error.config?.url,
+        method: error.config?.method,
+        headers: error.config?.headers,
+        data: error.response?.data,
+        accessTokenPrefix: tokenStorage.getAccessToken()?.substring(0, 10),
+        refreshTokenPrefix: tokenStorage.getRefreshToken()?.substring(0, 10)
+      });
+      const responseData = error.response.data as { error?: { code?: string } | string } | undefined;
+      const errorCode = typeof responseData?.error === 'object' ? responseData?.error?.code : responseData?.error;
+
+      if (errorCode === "SESSION_REPLACED") {
+        const { store } = await import("../store/store");
+        store.dispatch(setSessionReplacedOpen(true));
+        // Stop further processing, but don't redirect yet (modal will handle it)
+        return Promise.reject(error);
+      }
+
       if (originalRequest._retry) {
+        console.error('[API] 401 error on retry. Forcing logout.');
         // We already tried to refresh the token and still got a 401
         await forceLogout();
         return Promise.reject(error);
@@ -273,10 +306,12 @@ api.interceptors.response.use(
       }
 
       try {
+        console.log('[API] Attempting to refresh token...');
         const response = await axios.post(`${API_BASE_URL}/auth/refresh-token`, {
           refreshToken,
         });
 
+        console.log('[API] Token refresh successful.');
         const { accessToken, refreshToken: newRefreshToken } = response.data.data;
         tokenStorage.setTokens(accessToken, newRefreshToken);
 
@@ -287,13 +322,20 @@ api.interceptors.response.use(
 
         processQueue(null, accessToken);
         return api(originalRequest);
-      } catch (refreshError) {
-        processQueue(refreshError as AxiosError, null);
+      } catch (refreshError: unknown) {
+        const error = refreshError as AxiosError<{ error?: { code?: string; message?: string } | string }>;
+        processQueue(error, null);
 
-        const axiosRefreshError = refreshError as AxiosError<{ error?: { message?: string } }>;
-        const errorMessage =
-          axiosRefreshError?.response?.data?.error?.message || "";
+        const responseData = error?.response?.data;
+        const errorCode = typeof responseData?.error === 'object' ? responseData?.error?.code : responseData?.error;
 
+        if (errorCode === "SESSION_REPLACED") {
+          const { store } = await import("../store/store");
+          store.dispatch(setSessionReplacedOpen(true));
+          return Promise.reject(refreshError);
+        }
+        
+        const errorMessage = (typeof responseData?.error === 'object' ? responseData?.error?.message : "") || "";
         const isSessionInvalidated =
           errorMessage.includes("another device") ||
           errorMessage.includes("session has been invalidated");

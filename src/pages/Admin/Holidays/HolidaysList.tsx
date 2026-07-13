@@ -3,9 +3,8 @@ import {
     Plus,
     Edit,
     Calendar,
-    CheckCircle2,
-    XCircle,
-    Trash2,
+    Archive,
+    RefreshCw,
     Repeat,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -24,6 +23,8 @@ import UnifiedFilter from "../../../components/common/Filter/UnifiedFilter";
 import Pagination from "../../../components/common/Pagination";
 import { SearchInput } from "../../../components/common/Search/SearchInput";
 import { getErrorMessage } from "../../../utils/errorHandling";
+import { usePermissions } from "../../../hooks/usePermissions";
+import { PERMISSIONS } from "../../../config/permissions";
 
 const HolidaysList: React.FC = () => {
     const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -49,23 +50,99 @@ const HolidaysList: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentHoliday, setCurrentHoliday] = useState<Partial<Holiday> | null>(null);
 
+    const { hasPermission: canManage } = usePermissions(PERMISSIONS.HOLIDAY_MANAGE);
+
     const fetchHolidays = useCallback(async (currentPage: number) => {
         try {
             setLoading(true);
+
+            // Calculate date range if month or year is selected
+            let startDate: string | undefined;
+            let endDate: string | undefined;
+
+            if (yearFilter !== "all") {
+                const year = parseInt(yearFilter);
+                if (monthFilter !== "all") {
+                    const month = parseInt(monthFilter);
+                    const start = new Date(year, month - 1, 1);
+                    start.setHours(0, 0, 0, 0);
+                    const end = new Date(year, month, 0);
+                    end.setHours(23, 59, 59, 999);
+                    startDate = start.toISOString();
+                    endDate = end.toISOString();
+                } else {
+                    const start = new Date(year, 0, 1);
+                    start.setHours(0, 0, 0, 0);
+                    const end = new Date(year, 11, 31);
+                    end.setHours(23, 59, 59, 999);
+                    startDate = start.toISOString();
+                    endDate = end.toISOString();
+                }
+            } else if (monthFilter !== "all") {
+                const month = parseInt(monthFilter);
+                const year = new Date().getFullYear();
+                const start = new Date(year, month - 1, 1);
+                start.setHours(0, 0, 0, 0);
+                const end = new Date(year, month, 0);
+                end.setHours(23, 59, 59, 999);
+                startDate = start.toISOString();
+                endDate = end.toISOString();
+            }
+
             const filters: OrganizationFilters = {
                 page: currentPage,
                 limit,
-                search: debouncedSearchTerm || undefined,
+                search: debouncedSearchTerm.trim() || undefined,
                 isActive: statusFilter === "active" ? true : statusFilter === "inactive" ? false : undefined,
                 month: monthFilter !== "all" ? monthFilter : undefined,
                 year: yearFilter !== "all" ? yearFilter : undefined,
+                startDate,
+                endDate,
             };
             const response = await holidayService.getAll(filters);
-            setHolidays(response.data);
+
+            // Client-side projection and filtering to ensure the UI reflects the requested period
+            // even if the backend returns recurring master records or a broader set of data.
+            let processedHolidays = [...response.data];
+
+            if (yearFilter !== "all" || monthFilter !== "all") {
+                processedHolidays = processedHolidays
+                    .map(h => {
+                        // Project recurring holidays to the filtered year
+                        if (h.isRecurring && yearFilter !== "all") {
+                            try {
+                                const date = parseLocalDate(h.date);
+                                date.setFullYear(parseInt(yearFilter));
+                                return { ...h, date: date.toISOString() };
+                            } catch {
+                                return h;
+                            }
+                        }
+                        return h;
+                    })
+                    .filter(h => {
+                        try {
+                            const date = parseLocalDate(h.date);
+                            const hYear = date.getFullYear().toString();
+                            const hMonth = (date.getMonth() + 1).toString();
+
+                            // Keep recurring holidays or those matching the year
+                            const matchesYear = yearFilter === "all" || h.isRecurring || hYear === yearFilter;
+                            // Match strictly by month if filter is active
+                            const matchesMonth = monthFilter === "all" || hMonth === monthFilter;
+
+                            return matchesYear && matchesMonth;
+                        } catch {
+                            return true; // Keep if parsing fails
+                        }
+                    });
+            }
+
+            setHolidays(processedHolidays);
             setTotalPages(response.totalPages);
 
             // Only disable search if there's no data AND no active filters/search
-            const hasActiveFilters = debouncedSearchTerm || statusFilter !== "all";
+            const hasActiveFilters = !!(debouncedSearchTerm.trim() || statusFilter !== "all" || monthFilter !== "all" || yearFilter !== "all");
             if (!hasActiveFilters && response.total === 0) {
                 setHasData(false);
             } else if (response.total > 0) {
@@ -93,40 +170,19 @@ const HolidaysList: React.FC = () => {
         const action = holiday.isActive ? "deactivate" : "activate";
         const confirmed = await confirm({
             title: `${action.charAt(0).toUpperCase() + action.slice(1)} Holiday`,
-            message: `Are you sure you want to ${action} "${holiday.name}"?`,
+            message: `Are you sure you want to ${action} "${holiday.name}"? ${holiday.isActive ? "This will archive the holiday." : ""}`,
             confirmLabel: action.charAt(0).toUpperCase() + action.slice(1),
             variant: holiday.isActive ? 'danger' : 'info'
         });
 
         if (confirmed) {
             try {
-                await holidayService.update(holiday._id, { isActive: !holiday.isActive });
+                await holidayService.toggleStatus(holiday._id, !holiday.isActive);
                 fetchHolidays(page);
             } catch (error) {
                 console.error(`Failed to ${action} holiday:`, error);
 
                 const errorMessage = getErrorMessage(error, `Failed to ${action} holiday`);
-                alert(errorMessage);
-            }
-        }
-    };
-
-    const handleDelete = async (holiday: Holiday) => {
-        const confirmed = await confirm({
-            title: 'Delete Holiday',
-            message: `Are you sure you want to PERMANENTLY delete "${holiday.name}"? This action cannot be undone.`,
-            confirmLabel: 'Delete',
-            variant: 'danger'
-        });
-
-        if (confirmed) {
-            try {
-                await holidayService.delete(holiday._id);
-                fetchHolidays(page);
-            } catch (error) {
-                console.error(`Failed to delete holiday:`, error);
-
-                const errorMessage = getErrorMessage(error, "Failed to delete holiday");
                 alert(errorMessage);
             }
         }
@@ -291,19 +347,14 @@ const HolidaysList: React.FC = () => {
                         )}
                         title={row.isActive ? "Deactivate" : "Activate"}
                     >
-                        {row.isActive ? <XCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => handleDelete(row)}
-                        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-error/10 hover:text-error text-foreground-secondary transition-all"
-                        title="Delete Holiday"
-                    >
-                        <Trash2 className="w-4 h-4" />
+                        {row.isActive ? <Archive className="w-4 h-4" /> : <RefreshCw className="w-4 h-4" />}
                     </button>
                 </div>
             ),
         },
     ];
+
+    const displayColumns = canManage ? columns : columns.filter(col => col._id !== 'actions');
 
     if (isInitialLoading) {
         return (
@@ -326,26 +377,29 @@ const HolidaysList: React.FC = () => {
                         Manage organizational holidays and observances.
                     </p>
                 </div>
-                <Button
-                    onClick={handleAdd}
-                    startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
-                >
-                    Add Holiday
-                </Button>
+                {canManage && (
+                    <Button
+                        onClick={handleAdd}
+                        startIcon={<Plus className="w-4 h-4 sm:w-5 sm:h-5" />}
+                    >
+                        Add Holiday
+                    </Button>
+                )}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
-                <div className="lg:col-span-2">
+            <div className="relative z-10 flex flex-col lg:flex-row gap-4 items-center p-4 rounded-[2rem] border border-border/50 bg-surface/50 backdrop-blur-md shadow-sm">
+                <div className="flex-1 w-full">
                     <SearchInput
                         value={searchTerm}
                         onChange={setSearchTerm}
+                        searchKey="holidays"
                         placeholder="Search holidays..."
                         disabled={!hasData}
-                        className={!hasData ? "opacity-50 cursor-not-allowed bg-muted/30" : ""}
+                        title={!hasData ? "No holidays to search" : ""}
                     />
                 </div>
 
-                <div className="lg:col-span-2 flex justify-start gap-2">
+                <div className="shrink-0 flex items-center justify-end gap-2">
                     <UnifiedFilter
                         filters={[
                             {
@@ -386,7 +440,7 @@ const HolidaysList: React.FC = () => {
                     </div>
                 )}
                 <Table
-                    columns={columns}
+                    columns={displayColumns}
                     rows={holidays}
                     className="border-none"
                     emptyState={

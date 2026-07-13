@@ -4,6 +4,7 @@ import { Provider } from "react-redux";
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "../../store/slices/authSlice";
 import Login from "./Login";
+import type { AuthState } from "../../store/slices/authSlice";
 
 // Create a mock store
 const createMockStore = (initialState = {}) => {
@@ -19,7 +20,7 @@ const createMockStore = (initialState = {}) => {
                 isInitialized: true,
                 error: null,
                 ...initialState
-            } as any
+            } as unknown as AuthState
         }
     });
 };
