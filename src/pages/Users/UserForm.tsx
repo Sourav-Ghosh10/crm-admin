@@ -227,7 +227,7 @@ const PasswordChangeModalButton: React.FC<{ userId: string }> = ({ userId }) => 
     setSuccessMsg("");
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
     if (!newPassword || newPassword.length < 6) {
       setPasswordError("Password must be at least 6 characters long.");
@@ -278,7 +278,7 @@ const PasswordChangeModalButton: React.FC<{ userId: string }> = ({ userId }) => 
         title="Change Password"
         maxWidth="sm"
       >
-        <form onSubmit={handlePasswordSubmit} className="space-y-4 pt-2">
+        <form id="change-password-modal-form" onSubmit={handlePasswordSubmit} className="space-y-4 pt-2">
           <div className="bg-muted/30 p-3.5 rounded-xl border border-border/50 text-xs text-foreground-secondary flex items-center gap-3 mb-4 shadow-sm">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
               <Lock className="w-4 h-4" />
@@ -353,7 +353,12 @@ const PasswordChangeModalButton: React.FC<{ userId: string }> = ({ userId }) => 
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              form="change-password-modal-form"
+              onClick={(e) => {
+                if (!newPassword || !confirmPassword || isChangingPassword || !!successMsg) return;
+                handlePasswordSubmit(e);
+              }}
+              variant="default"
               disabled={isChangingPassword || !newPassword || !confirmPassword || !!successMsg}
             >
               {isChangingPassword ? "Updating..." : "Update Password"}

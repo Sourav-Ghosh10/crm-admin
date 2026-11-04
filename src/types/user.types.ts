@@ -92,6 +92,12 @@ export interface User {
   createdAt?: string;
   updatedAt?: string;
   lastActiveAt?: string;
+  lastActiveLocation?: {
+    latitude?: number;
+    longitude?: number;
+    address?: string;
+    updatedAt?: string;
+  };
   __v?: number;
 }
 

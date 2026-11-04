@@ -57,7 +57,12 @@ const mapAttendance = (item: Record<string, unknown>): Attendance => {
 
 export const attendanceService = {
   getAll: async (params?: AttendanceFilters): Promise<PaginatedAttendanceResponse> => {
-    const response: AxiosResponse = await api.get("/attendance", { params });
+    const targetEmpId = params?.employeeId || params?.userId;
+    const cleanParams = {
+      ...params,
+      ...(targetEmpId ? { employeeId: targetEmpId, userId: targetEmpId } : {}),
+    };
+    const response: AxiosResponse = await api.get("/attendance", { params: cleanParams });
     const root = response.data;
 
     // Try multiple shapes to be resilient against API variations
@@ -112,41 +117,67 @@ export const attendanceService = {
   },
 
   getByDateAndUser: async (date: string, userId: string): Promise<Attendance> => {
+    const dateKey = date.slice(0, 10);
     try {
-      const response: AxiosResponse = await api.get(`/attendance/${date}/${userId}`);
+      const response: AxiosResponse = await api.get(`/attendance/${dateKey}/${userId}`);
       const root = response.data;
       const data = root?.data || root;
-      return mapAttendance(data as Record<string, unknown>);
-    } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status !== 404) {
-        throw error;
+      if (data && (data._id || data.id || data.checkIn || data.sessions)) {
+        return mapAttendance(data as Record<string, unknown>);
       }
+    } catch {
+      // Fallback below
+    }
 
-      // Fallback for backends that don't expose /attendance/:date/:userId
-      // and only support filtering through /attendance.
-      const fallback = await attendanceService.getAll({
-        userId,
-        startDate: date,
-        endDate: date,
-        page: 1,
-        limit: 50,
-      });
+    // Fallback: Query /attendance with a window of ±2 days to catch shifts across timezones
+    const [y, m, d] = dateKey.split("-").map(Number);
+    const dateObj = (!y || !m || !d) ? new Date() : new Date(y, m - 1, d);
+    const prevDate = new Date(dateObj.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const nextDate = new Date(dateObj.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
-      const dateKey = date.slice(0, 10);
-      const record = (fallback.attendances || []).find((item) => {
-        const itemDate = String(item.date || "").slice(0, 10);
-        const emp = item.employeeId;
-        const itemUserId = typeof emp === "string" ? emp : (emp?._id || "");
-        return itemDate === dateKey && itemUserId === userId;
-      });
+    const fallback = await attendanceService.getAll({
+      userId,
+      startDate: prevDate,
+      endDate: nextDate,
+      page: 1,
+      limit: 50,
+    });
 
-      if (!record) {
-        throw error;
+    const attendances = fallback.attendances || [];
+
+    // Find the record matching the date or check-in timestamp
+    const record = attendances.find((item) => {
+      const emp = item.employeeId;
+      const itemUserId = typeof emp === "string" ? emp : (emp?._id || (emp as { id?: string })?.id || "");
+      const matchesUser = !userId || !itemUserId || itemUserId === userId;
+      if (!matchesUser) return false;
+
+      // Exact dateKey match
+      const itemDate = String(item.date || "").slice(0, 10);
+      if (itemDate === dateKey) return true;
+
+      // Check-in timestamp check (in any timezone)
+      const firstCheckIn = item.checkIn?.time || (item.sessions && item.sessions.length > 0 ? item.sessions[0].checkIn?.time : null);
+      if (firstCheckIn) {
+        const checkInIso = String(firstCheckIn).slice(0, 10);
+        if (checkInIso === dateKey) return true;
+        const checkInDate = new Date(firstCheckIn);
+        const ymdLocal = `${checkInDate.getFullYear()}-${String(checkInDate.getMonth() + 1).padStart(2, '0')}-${String(checkInDate.getDate()).padStart(2, '0')}`;
+        if (ymdLocal === dateKey) return true;
       }
+      return false;
+    });
 
+    if (record) {
       return record;
     }
+
+    // If any record exists in the window for this user, return the most relevant one
+    if (attendances.length > 0) {
+      return attendances[0];
+    }
+
+    throw new Error(`Attendance record not found for date ${dateKey} and user ${userId}`);
   },
 
   getSummary: async (params?: AttendanceFilters): Promise<PaginatedAttendanceResponse> => {
@@ -182,5 +213,20 @@ export const attendanceService = {
   getLastActiveLocations: async (): Promise<any[]> => {
     const response = await api.get("/location/last-active");
     return response.data?.data || [];
+  },
+
+  manualUpdate: async (payload: {
+    employeeId: string;
+    date: string;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+    status?: string;
+    remarks?: string;
+    clearPunches?: boolean;
+  }): Promise<Attendance> => {
+    const response = await api.post("/attendance/manual-update", payload);
+    const root = response.data;
+    const data = root?.data || root;
+    return mapAttendance(data as Record<string, unknown>);
   },
 };

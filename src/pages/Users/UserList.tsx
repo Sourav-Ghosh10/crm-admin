@@ -10,6 +10,8 @@ import {
   RefreshCw,
   KeyRound,
   Lock,
+  Clock,
+  Globe,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import type { User, UserFilters, EmploymentType } from "../../types/user.types";
@@ -62,6 +64,14 @@ const getTimeAgo = (dateStr: string | null | undefined): string => {
   return "long time ago";
 };
 // ────────────────────────────────────────────────────────────────────
+
+const TIMEZONE_OPTIONS = [
+  { value: "Asia/Kolkata", label: "India (IST)" },
+  { value: "America/New_York", label: "USA (EST)" },
+  { value: "America/Chicago", label: "USA (CST)" },
+  { value: "America/Denver", label: "USA (MST)" },
+  { value: "America/Los_Angeles", label: "USA (PST)" },
+];
 
 const getStatusBadge = (isActive: boolean) => {
   return (
@@ -131,6 +141,17 @@ const UserList: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Timezone Shift Modal state
+  const [isTimezoneModalOpen, setIsTimezoneModalOpen] = useState(false);
+  const [selectedTimezone, setSelectedTimezone] = useState("Asia/Kolkata");
+  const [adjustDirection, setAdjustDirection] = useState<'add' | 'subtract'>('add');
+  const [adjustHours, setAdjustHours] = useState(1);
+  const [adjustMinutes, setAdjustMinutes] = useState(0);
+  const [syncFutureSchedules, setSyncFutureSchedules] = useState(true);
+  const [timezonesSummary, setTimezonesSummary] = useState<{ timezone: string; count: number }[]>([]);
+  const [isAdjustingTimezone, setIsAdjustingTimezone] = useState(false);
+  const [timezoneError, setTimezoneError] = useState("");
 
   // Sync state to URL
   useEffect(() => {
@@ -368,7 +389,7 @@ const UserList: React.FC = () => {
     setPasswordError("");
   };
 
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handlePasswordSubmit = async (e: React.FormEvent | React.MouseEvent) => {
     e.preventDefault();
     if (!passwordModalUser) return;
 
@@ -403,6 +424,74 @@ const UserList: React.FC = () => {
       setIsChangingPassword(false);
     }
   };
+
+  const handleOpenTimezoneModal = async () => {
+    setIsTimezoneModalOpen(true);
+    setTimezoneError("");
+    try {
+      const summary = await userService.getTimezonesSummary();
+      setTimezonesSummary(summary);
+      if (summary.length > 0 && !summary.some((s) => s.timezone === selectedTimezone)) {
+        setSelectedTimezone(summary[0].timezone);
+      }
+    } catch (err) {
+      console.error("Failed to fetch timezones summary:", err);
+    }
+  };
+
+  const handleAdjustTimezoneSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) e.preventDefault();
+    if (!selectedTimezone) {
+      setTimezoneError("Please select a timezone.");
+      return;
+    }
+    if (adjustHours === 0 && adjustMinutes === 0) {
+      setTimezoneError("Please specify at least 1 minute or 1 hour to adjust.");
+      return;
+    }
+
+    try {
+      setIsAdjustingTimezone(true);
+      setTimezoneError("");
+      const response = await userService.adjustTimezoneHours({
+        timezone: selectedTimezone,
+        direction: adjustDirection,
+        hours: adjustHours,
+        minutes: adjustMinutes,
+        syncFutureSchedules,
+      });
+
+      setIsTimezoneModalOpen(false);
+      await confirm({
+        title: "Shift Times Adjusted",
+        message:
+          response.message ||
+          `Successfully shifted working hours for ${response.data?.updatedUsersCount || 0} employee(s).`,
+        confirmLabel: "OK",
+        variant: "success",
+      });
+      await fetchUsers(page);
+    } catch (err) {
+      console.error("Failed to adjust timezone working hours:", err);
+      const msg = getErrorMessage(err, "Failed to adjust timezone shift times");
+      setTimezoneError(Array.isArray(msg) ? msg.join(", ") : msg);
+    } finally {
+      setIsAdjustingTimezone(false);
+    }
+  };
+
+  const timezoneOptionsWithCount = React.useMemo(() => {
+    return TIMEZONE_OPTIONS.map((tz) => {
+      const found = timezonesSummary.find((s) => s.timezone === tz.value);
+      return {
+        ...tz,
+        count: found ? found.count : 0,
+      };
+    });
+  }, [timezonesSummary]);
+
+  const selectedTzCount =
+    timezoneOptionsWithCount.find((t) => t.value === selectedTimezone)?.count || 0;
 
    const columns = [
     {
@@ -601,7 +690,17 @@ const UserList: React.FC = () => {
             Manage and monitor your global workforce efficiency.
           </p>
         </div>
-        <div className="flex gap-2 sm:gap-3 w-full md:w-auto">
+        <div className="flex flex-wrap gap-2 sm:gap-3 w-full md:w-auto">
+          {canManageSchedule && (
+            <Button
+              variant="outline"
+              onClick={handleOpenTimezoneModal}
+              startIcon={<Clock className="w-4 h-4 sm:w-5 sm:h-5" />}
+              className="border-primary/20 text-primary hover:bg-primary/5"
+            >
+              Adjust Shift by Timezone
+            </Button>
+          )}
           {canManageSchedule && (
             <Button
               variant="outline"
@@ -745,7 +844,7 @@ const UserList: React.FC = () => {
         title={`Change Password - ${passwordModalUser?.personalInfo.firstName || ""} ${passwordModalUser?.personalInfo.lastName || ""}`}
         maxWidth="sm"
       >
-        <form onSubmit={handlePasswordSubmit} className="space-y-4 pt-2">
+        <form id="change-password-form" onSubmit={handlePasswordSubmit} className="space-y-4 pt-2">
           <div className="bg-muted/30 p-3.5 rounded-xl border border-border/50 text-xs text-foreground-secondary flex items-center gap-3 mb-4 shadow-sm">
             <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0">
               <Lock className="w-4 h-4" />
@@ -814,10 +913,204 @@ const UserList: React.FC = () => {
             </Button>
             <Button
               type="submit"
-              variant="primary"
+              form="change-password-form"
+              onClick={(e) => {
+                if (!newPassword || !confirmPassword || isChangingPassword) return;
+                handlePasswordSubmit(e);
+              }}
+              variant="default"
               disabled={isChangingPassword || !newPassword || !confirmPassword}
             >
               {isChangingPassword ? "Updating..." : "Update Password"}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* Timezone Shift Modal */}
+      <Modal
+        open={isTimezoneModalOpen}
+        onClose={() => !isAdjustingTimezone && setIsTimezoneModalOpen(false)}
+        title="Adjust Shift Times by Timezone"
+        maxWidth="md"
+      >
+        <form id="adjust-timezone-form" onSubmit={handleAdjustTimezoneSubmit} className="space-y-5">
+          <p className="text-xs sm:text-sm text-foreground-tertiary">
+            Bulk adjust Start Time and End Time for all active employees assigned to a specific timezone (e.g., for Daylight Saving Time or seasonal shift realignment).
+          </p>
+
+          {/* Timezone Selector */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-foreground">
+              Select Timezone <span className="text-error">*</span>
+            </label>
+            <select
+              value={selectedTimezone}
+              onChange={(e) => setSelectedTimezone(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+            >
+              {timezoneOptionsWithCount.map((tz) => (
+                <option key={tz.value} value={tz.value}>
+                  {tz.label} {tz.count > 0 ? `(${tz.count} employee${tz.count > 1 ? "s" : ""})` : "(0 employees)"}
+                </option>
+              ))}
+            </select>
+            <div className="text-[11px] text-foreground-tertiary flex items-center gap-1.5">
+              <Globe className="w-3.5 h-3.5 text-primary" />
+              <span>
+                <strong>{selectedTzCount}</strong> active employee{selectedTzCount === 1 ? "" : "s"} currently in this timezone
+              </span>
+            </div>
+          </div>
+
+          {/* Direction Toggle */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-foreground">
+              Adjustment Direction
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setAdjustDirection("add")}
+                className={cn(
+                  "flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-semibold text-sm transition-all cursor-pointer",
+                  adjustDirection === "add"
+                    ? "bg-primary text-white border-primary shadow-sm"
+                    : "bg-surface text-foreground border-border hover:bg-muted"
+                )}
+              >
+                <span>Advance / Forward (+)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustDirection("subtract")}
+                className={cn(
+                  "flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border font-semibold text-sm transition-all cursor-pointer",
+                  adjustDirection === "subtract"
+                    ? "bg-primary text-white border-primary shadow-sm"
+                    : "bg-surface text-foreground border-border hover:bg-muted"
+                )}
+              >
+                <span>Delay / Backward (−)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-foreground-tertiary">
+              Quick Presets
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "+1 Hour", dir: "add" as const, h: 1, m: 0 },
+                { label: "−1 Hour", dir: "subtract" as const, h: 1, m: 0 },
+                { label: "+30 Mins", dir: "add" as const, h: 0, m: 30 },
+                { label: "−30 Mins", dir: "subtract" as const, h: 0, m: 30 },
+                { label: "+2 Hours", dir: "add" as const, h: 2, m: 0 },
+                { label: "−2 Hours", dir: "subtract" as const, h: 2, m: 0 },
+              ].map((preset) => {
+                const isActive =
+                  adjustDirection === preset.dir &&
+                  adjustHours === preset.h &&
+                  adjustMinutes === preset.m;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setAdjustDirection(preset.dir);
+                      setAdjustHours(preset.h);
+                      setAdjustMinutes(preset.m);
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer",
+                      isActive
+                        ? "bg-primary text-white border-primary shadow-sm"
+                        : "bg-surface text-foreground border-border/80 hover:bg-muted"
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Amount (Hours & Minutes) */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-foreground">
+                Hours
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="23"
+                value={adjustHours}
+                onChange={(e) => setAdjustHours(Math.max(0, Math.min(23, Number(e.target.value) || 0)))}
+                className="w-full px-4 py-2 rounded-xl border border-border bg-surface text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-foreground">
+                Minutes
+              </label>
+              <select
+                value={adjustMinutes}
+                onChange={(e) => setAdjustMinutes(Number(e.target.value) || 0)}
+                className="w-full px-4 py-2 rounded-xl border border-border bg-surface text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+              >
+                <option value={0}>0 minutes</option>
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Auto Sync Future Schedules checkbox */}
+          <label className="flex items-start gap-2.5 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={syncFutureSchedules}
+              onChange={(e) => setSyncFutureSchedules(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+            />
+            <span className="text-xs font-medium text-foreground">
+              Automatically sync upcoming roster schedules (from today onwards) to match the new working hours
+            </span>
+          </label>
+
+          {timezoneError && (
+            <div className="p-3 bg-error/10 border border-error/20 rounded-xl text-error text-xs font-medium">
+              {timezoneError}
+            </div>
+          )}
+
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsTimezoneModalOpen(false)}
+              disabled={isAdjustingTimezone}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              form="adjust-timezone-form"
+              onClick={(e) => {
+                if (isAdjustingTimezone || (adjustHours === 0 && adjustMinutes === 0) || selectedTzCount === 0) return;
+                handleAdjustTimezoneSubmit(e);
+              }}
+              variant="default"
+              disabled={isAdjustingTimezone || (adjustHours === 0 && adjustMinutes === 0) || selectedTzCount === 0}
+              className="cursor-pointer"
+            >
+              {isAdjustingTimezone
+                ? "Applying..."
+                : `Apply Shift (${selectedTzCount} Employee${selectedTzCount === 1 ? "" : "s"})`}
             </Button>
           </ModalFooter>
         </form>

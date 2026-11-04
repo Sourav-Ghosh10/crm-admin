@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { attendanceService } from "../../services/attendanceService";
+import { userService } from "../../services/userService";
 import type { Attendance } from "../../types/attendance.types";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/common/Card";
 import Button from "../../components/common/Button";
@@ -23,9 +24,37 @@ import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
 import Avatar from "../../components/common/Avatar";
 import TimezoneDualView from "../../components/common/TimezoneDualView";
 import { formatInTimeZone } from "date-fns-tz";
+import { format, subDays, addDays } from "date-fns";
 import { useAppSelector } from "../../store/hooks";
 import TimezoneToggle from "../../components/common/TimezoneToggle";
 import { getOfficeTimezone } from "../../utils/dateUtils";
+
+// Helper to treat YYYY-MM-DD as local date
+const ymdToLocalDate = (value: string): Date => {
+    const ymd = (value || "").slice(0, 10);
+    const [y, m, d] = ymd.split("-").map((n) => Number(n));
+    if (!y || !m || !d) return new Date(value);
+    return new Date(y, m - 1, d);
+};
+
+// Determine the local work-date for a record based on the employee's timezone
+const getRecordDateKey = (r: Attendance, employeeTz: string): string => {
+    const firstCheckIn = r.checkIn?.time || (r.sessions && r.sessions.length > 0 ? r.sessions[0].checkIn?.time : null);
+    if (firstCheckIn) {
+        try {
+            return formatInTimeZone(new Date(firstCheckIn), employeeTz, "yyyy-MM-dd");
+        } catch {
+            // fallback
+        }
+    }
+    if ((r.date as unknown) instanceof Date) {
+        return (r.date as unknown as Date).toISOString().slice(0, 10);
+    }
+    const rawDate = String(r.date || "");
+    // r.date is stored as UTC midnight representing the calendar date (e.g. 2026-08-31T00:00:00.000Z).
+    // Using rawDate.slice(0, 10) directly avoids unwanted day shifts from negative timezone offsets (e.g. EDT).
+    return rawDate.slice(0, 10);
+};
 
 // Dynamic interactive Leaflet Map Component (100% Client-Side & Plug-and-Play)
 export const LeafletMap: React.FC<{
@@ -37,92 +66,147 @@ export const LeafletMap: React.FC<{
     useEffect(() => {
         if (!mapRef.current || points.length === 0) return;
 
+        let isMounted = true;
+
         const loadLeaflet = () => {
-            if ((window as any).L) {
+            if (!(window as any).L) {
+                const existingLink = document.querySelector("link[href*='leaflet.css']");
+                if (!existingLink) {
+                    const link = document.createElement("link");
+                    link.rel = "stylesheet";
+                    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+                    document.head.appendChild(link);
+                }
+
+                const existingScript = document.querySelector("script[src*='leaflet.js']");
+                if (!existingScript) {
+                    const script = document.createElement("script");
+                    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+                    script.onload = () => {
+                        if (isMounted) initMap();
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    existingScript.addEventListener("load", () => {
+                        if (isMounted) initMap();
+                    });
+                }
+            } else {
                 initMap();
-                return;
             }
-
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-            document.head.appendChild(link);
-
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-            script.onload = () => initMap();
-            document.body.appendChild(script);
         };
 
         const initMap = () => {
             const L = (window as any).L;
-            if (!L || !mapRef.current) return;
+            const el = mapRef.current;
+            if (!L || !el || !isMounted) return;
 
             if (mapInstance.current) {
-                mapInstance.current.remove();
+                try {
+                    mapInstance.current.remove();
+                } catch {
+                    // Ignore cleanup error
+                }
+                mapInstance.current = null;
             }
 
-            const validPoints = points.filter(p => p.lat && p.lng);
+            // Reset leaflet ID on container if present
+            if ((el as any)._leaflet_id) {
+                (el as any)._leaflet_id = null;
+            }
+
+            const validPoints = points.filter(p => p.lat && p.lng && !isNaN(p.lat) && !isNaN(p.lng));
             if (validPoints.length === 0) return;
 
-            const center = [validPoints[0].lat, validPoints[0].lng] as [number, number];
-            const map = L.map(mapRef.current).setView(center, 13);
-            mapInstance.current = map;
+            try {
+                const map = L.map(el, {
+                    zoomControl: false,
+                    attributionControl: false
+                }).setView([validPoints[0].lat, validPoints[0].lng], 14);
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
-            }).addTo(map);
+                mapInstance.current = map;
 
-            const latlngs = validPoints.map(p => [p.lat, p.lng]);
-            const polyline = L.polyline(latlngs, { color: '#6366f1', weight: 4, opacity: 0.8 }).addTo(map);
-            
-            validPoints.forEach((p) => {
-                let color = '#f59e0b'; // default tracking
-                if (p.type === 'clock_in') color = '#22c55e';
-                if (p.type === 'clock_out') color = '#ef4444';
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19,
+                }).addTo(map);
 
-                const customMarkerHtml = `
-                    <div style="
-                        background-color: ${color}; 
-                        width: 14px; 
-                        height: 14px; 
-                        border-radius: 50%; 
-                        border: 2px solid white; 
-                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-                    "></div>
-                `;
+                const latLngs: [number, number][] = [];
 
-                const icon = L.divIcon({
-                    html: customMarkerHtml,
-                    className: 'custom-div-icon',
-                    iconSize: [14, 14],
-                    iconAnchor: [7, 7]
+                validPoints.forEach((p, idx) => {
+                    latLngs.push([p.lat, p.lng]);
+
+                    const isStart = idx === 0;
+                    const isEnd = idx === validPoints.length - 1 && validPoints.length > 1;
+                    const color = isStart ? '#10B981' : isEnd ? '#EF4444' : '#3B82F6';
+
+                    const markerHtml = `
+                        <div style="
+                            background: ${color};
+                            width: 24px;
+                            height: 24px;
+                            border-radius: 50%;
+                            border: 3px solid white;
+                            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            color: white;
+                            font-weight: 800;
+                            font-size: 10px;
+                        ">
+                            ${isStart ? 'IN' : isEnd ? 'OUT' : idx + 1}
+                        </div>
+                    `;
+
+                    const icon = L.divIcon({
+                        html: markerHtml,
+                        className: 'custom-leaflet-marker',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    });
+
+                    const popupContent = `
+                        <div style="font-family: inherit; font-size: 11px; padding: 2px; min-width: 120px;">
+                            <b style="text-transform: uppercase; color: ${color};">${p.label}</b>
+                            ${p.time ? `<br/><b>Time:</b> ${p.time}` : ''}
+                            ${p.address ? `<br/><span style="color: #666; font-size: 10px; display: block; margin-top: 4px;">${p.address}</span>` : ''}
+                        </div>
+                    `;
+
+                    L.marker([p.lat, p.lng], { icon })
+                        .addTo(map)
+                        .bindPopup(popupContent);
                 });
 
-                const popupContent = `
-                    <div style="font-family: inherit; font-size: 11px; padding: 2px; min-width: 120px;">
-                        <b style="text-transform: uppercase; color: ${color};">${p.label}</b>
-                        ${p.time ? `<br/><b>Time:</b> ${p.time}` : ''}
-                        ${p.address ? `<br/><span style="color: #666; font-size: 10px; display: block; margin-top: 4px;">${p.address}</span>` : ''}
-                    </div>
-                `;
-
-                L.marker([p.lat, p.lng], { icon })
-                    .addTo(map)
-                    .bindPopup(popupContent);
-            });
-
-            if (validPoints.length > 1) {
-                map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+                if (latLngs.length > 1) {
+                    L.polyline(latLngs, {
+                        color: '#3B82F6',
+                        weight: 4,
+                        opacity: 0.7,
+                        dashArray: '6, 8',
+                        lineJoin: 'round'
+                    }).addTo(map);
+                    map.fitBounds(L.latLngBounds(latLngs), { padding: [30, 30] });
+                }
+            } catch (err) {
+                console.error("Leaflet initialization error:", err);
             }
         };
 
         loadLeaflet();
 
         return () => {
+            isMounted = false;
             if (mapInstance.current) {
-                mapInstance.current.remove();
+                try {
+                    mapInstance.current.remove();
+                } catch {
+                    // Ignore
+                }
                 mapInstance.current = null;
+            }
+            if (mapRef.current && (mapRef.current as any)._leaflet_id) {
+                (mapRef.current as any)._leaflet_id = null;
             }
         };
     }, [points]);
@@ -148,9 +232,79 @@ const AttendanceDetails: React.FC = () => {
         const fetchDetails = async () => {
             if (!dateKey || !userId) return;
             try {
-                // Backend expects YYYY-MM-DD; avoid ISO timestamps in the URL
-                const data = await attendanceService.getByDateAndUser(dateKey, userId);
-                setRecord(data);
+                // 1. Fetch employee data and direct record in parallel
+                const [directRecord, empData] = await Promise.all([
+                    attendanceService.getByDateAndUser(dateKey, userId).catch(() => null),
+                    userService.getById(userId).catch(() => null)
+                ]);
+
+                const employeeTz = empData?.employment?.timezone || 'Asia/Kolkata';
+
+                let matchedRecord: Attendance | null = directRecord;
+
+                // 2. If directRecord is null or doesn't have punch data, query the surrounding range
+                if (!matchedRecord || (!matchedRecord.sessions?.length && !matchedRecord.checkIn?.time)) {
+                    const d = ymdToLocalDate(dateKey);
+                    const startStr = format(subDays(d, 3), "yyyy-MM-dd");
+                    const endStr = format(addDays(d, 3), "yyyy-MM-dd");
+
+                    const queryRes = await attendanceService.getAll({
+                        employeeId: userId,
+                        userId,
+                        startDate: startStr,
+                        endDate: endStr,
+                        page: 1,
+                        limit: 50,
+                    }).catch(() => ({ attendances: [] }));
+
+                    const attendances = queryRes.attendances || [];
+
+                    // Match by employee timezone work date first
+                    matchedRecord = attendances.find(r => getRecordDateKey(r, employeeTz) === dateKey)
+                        // Or match by raw dateKey
+                        || attendances.find(r => String(r.date || "").slice(0, 10) === dateKey)
+                        // Or match by any check-in date matching dateKey
+                        || attendances.find(r => {
+                            const firstCheckIn = r.checkIn?.time || (r.sessions && r.sessions.length > 0 ? r.sessions[0].checkIn?.time : null);
+                            return firstCheckIn && String(firstCheckIn).slice(0, 10) === dateKey;
+                        })
+                        // Or if only 1 record returned
+                        || (attendances.length === 1 ? attendances[0] : null);
+                }
+
+                if (matchedRecord) {
+                    if (empData && (!matchedRecord.employeeId || typeof matchedRecord.employeeId === 'string' || !(matchedRecord.employeeId as any).personalInfo)) {
+                        matchedRecord.employeeId = empData as unknown as Attendance['employeeId'];
+                    }
+                    // If matched record status is empty or absent but has punch data, mark as present
+                    const hasPunch = !!(matchedRecord.sessions?.length || matchedRecord.checkIn?.time);
+                    if (hasPunch && (!matchedRecord.status || matchedRecord.status.toLowerCase() === 'absent')) {
+                        matchedRecord.status = matchedRecord.isLate ? 'late' : 'present';
+                    }
+                    setRecord(matchedRecord);
+                } else if (empData) {
+                    // Create an empty attendance record placeholder for this user and date
+                    const firstName = empData.personalInfo?.firstName || '';
+                    const lastName = empData.personalInfo?.lastName || '';
+                    const fullName = `${firstName} ${lastName}`.trim() || 'Employee';
+                    const email = empData.personalInfo?.email || '';
+
+                    setRecord({
+                        _id: `${dateKey}_${userId}`,
+                        date: dateKey,
+                        employeeId: empData as unknown as Attendance['employeeId'],
+                        name: fullName,
+                        email: email,
+                        profilePicture: empData.personalInfo?.profilePicture,
+                        status: 'scheduled',
+                        sessions: [],
+                        breaks: [],
+                        totalHours: 0,
+                        breakTime: 0,
+                        isLate: false,
+                        isHoliday: false,
+                    } as unknown as Attendance);
+                }
             } catch (error) {
                 console.error("Failed to fetch attendance details:", error);
             } finally {
@@ -185,16 +339,13 @@ const AttendanceDetails: React.FC = () => {
         }
     };
 
-    const formatDate = (dateStr: string) => {
+    const formatDate = (dateStr?: string) => {
+        if (!dateStr) return "";
         try {
-            return formatInTimeZone(new Date(dateStr), activeTimezone, 'EEEE, MMMM dd, yyyy');
+            const d = ymdToLocalDate(dateStr);
+            return format(d, 'EEEE, MMMM dd, yyyy');
         } catch {
-            return new Date(dateStr).toLocaleDateString(undefined, {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-            });
+            return String(dateStr);
         }
     };
 
@@ -221,9 +372,22 @@ const AttendanceDetails: React.FC = () => {
         return parts.join(' ');
     };
 
-    // Construct Map coordinates timeline
-    const timelineData = record.timeline || [];
-    const mapPoints = timelineData.map((rec: any) => {
+    interface MapPointItem {
+        lat: number;
+        lng: number;
+        label: string;
+        time?: string;
+        type?: string;
+        address?: string;
+    }
+
+    const mapPoints: MapPointItem[] = [];
+    (record.timeline || []).forEach((rec: any) => {
+        if (!rec || !rec.latitude || !rec.longitude) return;
+        const lat = Number(rec.latitude);
+        const lng = Number(rec.longitude);
+        if (isNaN(lat) || isNaN(lng)) return;
+
         let label = 'GPS Track';
         if (rec.type === 'clock_in') label = 'Check In';
         if (rec.type === 'clock_out') label = 'Check Out';
@@ -233,20 +397,22 @@ const AttendanceDetails: React.FC = () => {
 
         let timeStr = '';
         const eventTime = rec.time || rec.loginAt;
-        try {
-            timeStr = formatInTimeZone(new Date(eventTime), activeTimezone, 'hh:mm a');
-        } catch {
-            timeStr = new Date(eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        if (eventTime) {
+            try {
+                timeStr = formatInTimeZone(new Date(eventTime), activeTimezone, 'hh:mm a');
+            } catch {
+                timeStr = new Date(eventTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
         }
 
-        return {
-            lat: rec.latitude,
-            lng: rec.longitude,
+        mapPoints.push({
+            lat,
+            lng,
             label,
             time: timeStr,
             type: rec.type,
             address: rec.address
-        };
+        });
     });
 
     return (
@@ -521,9 +687,9 @@ const AttendanceDetails: React.FC = () => {
                                                 <div className="flex flex-col gap-1">
                                                     <div className="flex items-center gap-3">
                                                         <TimezoneDualView
-                                                            startTime={session.checkIn.time}
+                                                            startTime={session.checkIn?.time || ""}
                                                             endTime={session.checkOut?.time}
-                                                            primaryTimezone={record.employeeId?.employment?.timezone || 'Asia/Kolkata'}
+                                                            primaryTimezone={employeeTimezone}
                                                             secondaryTimezone={adminTimezone}
                                                             variant="minimal"
                                                         />
@@ -538,7 +704,7 @@ const AttendanceDetails: React.FC = () => {
                                                             </span>
                                                         </span>
                                                     </div>
-                                                    {session.checkIn.address && (
+                                                    {session.checkIn?.address && (
                                                         <div className="flex items-start gap-1.5 mt-1 max-w-[320px] sm:max-w-[450px]">
                                                             <MapPin className="w-3 h-3 text-success flex-shrink-0 mt-0.5" />
                                                             <span className="text-[11px] text-foreground-tertiary font-medium leading-normal" title={session.checkIn.address}>

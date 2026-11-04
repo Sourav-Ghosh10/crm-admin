@@ -11,6 +11,39 @@ export interface EmployeePresence {
   lastActiveAt: string | null;
 }
 
+export interface TimezoneSummaryItem {
+  timezone: string;
+  count: number;
+}
+
+export interface AdjustTimezoneHoursPayload {
+  timezone: string;
+  direction: 'add' | 'subtract';
+  hours: number;
+  minutes: number;
+  syncFutureSchedules?: boolean;
+}
+
+export interface AdjustTimezoneHoursResponse {
+  success: boolean;
+  message: string;
+  data: {
+    timezone: string;
+    offsetMinutes: number;
+    direction: 'add' | 'subtract';
+    hours: number;
+    minutes: number;
+    updatedUsersCount: number;
+    users: Array<{
+      _id: string;
+      employeeId: string;
+      name: string;
+      oldWorkingHours: { startTime: string; endTime: string };
+      newWorkingHours: { startTime: string; endTime: string };
+    }>;
+  };
+}
+
 // Helper to normalize MongoDB Extended JSON (e.g. { $oid: '...' } or { $date: '...' })
 // Helper to normalize MongoDB Extended JSON (e.g. { $oid: '...' } or { $date: '...' })
 const normalizeValue = (value: unknown): unknown => {
@@ -165,5 +198,15 @@ export const userService = {
   getPresence: async (): Promise<EmployeePresence[]> => {
     const response = await api.get<{ success: boolean; data: EmployeePresence[] }>("/employee/presence");
     return response.data?.data || [];
+  },
+
+  getTimezonesSummary: async (): Promise<TimezoneSummaryItem[]> => {
+    const response = await api.get<{ success: boolean; data: TimezoneSummaryItem[] }>("/users/timezones-summary");
+    return response.data?.data || [];
+  },
+
+  adjustTimezoneHours: async (payload: AdjustTimezoneHoursPayload): Promise<AdjustTimezoneHoursResponse> => {
+    const response = await api.post<AdjustTimezoneHoursResponse>("/users/adjust-timezone-hours", payload);
+    return response.data;
   },
 };
