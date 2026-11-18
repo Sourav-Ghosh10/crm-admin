@@ -1,6 +1,20 @@
 import api from './api';
-import type { LeaveRequest, LeaveStatus, LeaveType, EmployeeLeaveBalanceResponse } from '../types/leave.types';
-export type { LeaveRequest, LeaveStatus, LeaveType, EmployeeLeaveBalanceResponse };
+import type {
+  LeaveRequest,
+  LeaveStatus,
+  LeaveType,
+  EmployeeLeaveBalanceResponse,
+  AllEmployeeLeaveBalanceItem,
+  PaginatedEmployeeBalancesResponse,
+} from '../types/leave.types';
+export type {
+  LeaveRequest,
+  LeaveStatus,
+  LeaveType,
+  EmployeeLeaveBalanceResponse,
+  AllEmployeeLeaveBalanceItem,
+  PaginatedEmployeeBalancesResponse,
+};
 
 export interface LeaveRequestQueryParams {
   page?: number;
@@ -65,6 +79,34 @@ export const leaveService = {
     return response.data.data;
   },
 
+  // Admin: Get all employees' leave balances (paginated & filterable)
+  getAllEmployeeBalances: async (params?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    department?: string;
+    location?: string;
+  }): Promise<PaginatedEmployeeBalancesResponse> => {
+    const cleanParams: Record<string, string | number> = {};
+    if (params) {
+      if (params.page) cleanParams.page = params.page;
+      if (params.limit) cleanParams.limit = params.limit;
+      if (params.search) cleanParams.search = params.search;
+      if (params.department && params.department !== 'all') cleanParams.department = params.department;
+      if (params.location && params.location !== 'all') cleanParams.location = params.location;
+    }
+    const response = await api.get('/leave-requests/balances', { params: cleanParams });
+    const leaveTypes = response.data.leaveTypes || [];
+    const data = response.data.data || [];
+    const pagination = response.data.pagination || {
+      total: data.length,
+      page: params?.page || 1,
+      limit: params?.limit || 10,
+      pages: 1,
+    };
+    return { leaveTypes, data, pagination };
+  },
+
   // Admin: Get specific employee's balance
   getEmployeeBalance: async (userId: string): Promise<EmployeeLeaveBalanceResponse> => {
     const response = await api.get(`/leave-requests/employee/${userId}/balance`);
@@ -73,7 +115,11 @@ export const leaveService = {
 
   // Admin: Update specific employee's balance
   updateEmployeeBalance: async (userId: string, leaveBalance: Record<string, number>, totalLeaveBalance?: number) => {
-    const response = await api.patch(`/leave-requests/employee/${userId}/balance`, { leaveBalance, totalLeaveBalance });
+    const payload: { leaveBalance: Record<string, number>; totalLeaveBalance?: number } = { leaveBalance };
+    if (totalLeaveBalance !== undefined) {
+      payload.totalLeaveBalance = totalLeaveBalance;
+    }
+    const response = await api.patch(`/leave-requests/employee/${userId}/balance`, payload);
     return response.data.data;
   },
 

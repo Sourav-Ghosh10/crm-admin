@@ -10,6 +10,7 @@ export interface ReportParams {
     year?: number;
     status?: string;
     designation?: string;
+    location?: string;
     search?: string;
     limit?: number;
     exchangeRate?: number;

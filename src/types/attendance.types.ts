@@ -88,4 +88,5 @@ export interface AttendanceFilters {
   search?: string;
   department?: string;
   designation?: string;
+  location?: string;
 }

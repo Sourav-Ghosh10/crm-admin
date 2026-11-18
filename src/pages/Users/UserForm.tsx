@@ -109,6 +109,8 @@ const baseSchema = yup.object({
     esiNumber: yup.string().nullable().max(50),
     bankAccountNo: yup.string().nullable().max(50),
     bankName: yup.string().nullable().max(100),
+    ifscCode: yup.string().nullable().max(20),
+    panNumber: yup.string().nullable().max(20),
     employmentType: yup.string().oneOf(["full-time", "part-time", "contract", "intern"]),
     reportingManager: yup.string().nullable(),
     location: yup.string().nullable(),
@@ -174,6 +176,8 @@ type UserFormValues = {
     esiNumber?: string;
     bankAccountNo?: string;
     bankName?: string;
+    ifscCode?: string;
+    panNumber?: string;
     employmentType: EmploymentType;
     reportingManager?: string;
     location?: string;
@@ -945,6 +949,36 @@ const EmploymentCard: React.FC<CardProps & {
               />
 
               <Controller
+                name="employment.ifscCode"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="IFSC Code"
+                    placeholder="Enter IFSC Code"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl uppercase"
+                  />
+                )}
+              />
+
+              <Controller
+                name="employment.panNumber"
+                control={control}
+                render={({ field, fieldState: { error } }) => (
+                  <Input
+                    {...field}
+                    label="PAN Number (Optional)"
+                    placeholder="Enter PAN Number"
+                    error={!!error}
+                    helperText={error?.message}
+                    className="rounded-xl uppercase"
+                  />
+                )}
+              />
+
+              <Controller
                 name="employment.workingHours.startTime"
                 control={control}
                 render={({ field }) => (
@@ -1383,6 +1417,8 @@ const UserForm: React.FC<UserFormProps> = ({
         esiNumber: initialValues?.employment?.esiNumber || "",
         bankAccountNo: initialValues?.employment?.bankAccountNo || "",
         bankName: initialValues?.employment?.bankName || "",
+        ifscCode: initialValues?.employment?.ifscCode || "",
+        panNumber: initialValues?.employment?.panNumber || "",
         employmentType: initialValues?.employment?.employmentType || "full-time",
         reportingManager: (() => {
           const rm = initialValues?.employment?.reportingManager;
@@ -1543,6 +1579,8 @@ const UserForm: React.FC<UserFormProps> = ({
         esiNumber: data.employment.esiNumber,
         bankAccountNo: data.employment.bankAccountNo,
         bankName: data.employment.bankName,
+        ifscCode: data.employment.ifscCode?.trim().toUpperCase() || "",
+        panNumber: data.employment.panNumber?.trim().toUpperCase() || "",
         employmentType: data.employment.employmentType,
         location: data.employment.location,
         timezone: data.employment.timezone,

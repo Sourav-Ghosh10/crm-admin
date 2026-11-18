@@ -61,6 +61,8 @@ export interface User {
     esiNumber?: string;
     bankAccountNo?: string;
     bankName?: string;
+    ifscCode?: string;
+    panNumber?: string;
     location?: string;
     timezone?: string;
     workingHours?: {
@@ -105,6 +107,7 @@ export interface UserFilters {
   role?:string;
   roleId?: string;
   department?: string;
+  location?: string;
   employmentType?: EmploymentType;
   isActive?: boolean;
   search?: string;

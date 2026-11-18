@@ -43,6 +43,18 @@ jest.mock("../../services/departmentService", () => ({
     },
 }));
 
+jest.mock("../../services/locationService", () => ({
+    locationService: {
+        getAll: jest.fn(() => Promise.resolve({
+            data: [],
+            total: 0,
+            page: 1,
+            limit: 10,
+            totalPages: 1
+        })),
+    },
+}));
+
 const mockUsers = [
     {
         id: "1",

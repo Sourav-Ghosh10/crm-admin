@@ -498,6 +498,14 @@ const UserProfile: React.FC = () => {
                       <p className="text-sm font-bold text-foreground font-mono">{user.employment?.bankAccountNo || 'N/A'}</p>
                     </div>
                     <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">IFSC Code</label>
+                      <p className="text-sm font-bold text-foreground font-mono uppercase">{user.employment?.ifscCode || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">PAN Number</label>
+                      <p className="text-sm font-bold text-foreground font-mono uppercase">{user.employment?.panNumber || 'N/A'}</p>
+                    </div>
+                    <div>
                       <label className="text-[10px] font-black text-foreground-tertiary uppercase tracking-widest block mb-1.5">Work Type</label>
                       <span className="px-3 py-1 rounded-lg bg-accent/10 text-accent text-xs font-black uppercase">{user.employment?.employmentType || 'N/A'}</span>
                     </div>

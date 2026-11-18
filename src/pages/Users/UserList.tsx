@@ -28,8 +28,9 @@ import { userService } from "../../services/userService";
 import type { EmployeePresence } from "../../services/userService";
 import { departmentService } from "../../services/departmentService";
 import { roleService } from "../../services/roleService";
+import { locationService } from "../../services/locationService";
 import { scheduleService } from "../../services/scheduleService";
-import type { Department } from "../../types/organization.types";
+import type { Department, OfficeLocation } from "../../types/organization.types";
 import type { Role } from "../../types/role.types";
 import GlobalLoader from "../../components/common/LoadingSpinner/GlobalLoader";
 import EmptyState from "../../components/common/EmptyState/EmptyState";
@@ -118,6 +119,7 @@ const UserList: React.FC = () => {
   const [deptFilter, setDeptFilter] = useState<string>(searchParams.get("dept") || "all");
   const [roleFilter, setRoleFilter] = useState<string>(searchParams.get("role") || "all");
   const [typeFilter, setTypeFilter] = useState<string>(searchParams.get("type") || "all");
+  const [locationFilter, setLocationFilter] = useState<string>(searchParams.get("location") || "all");
   const initialPage = Number(searchParams.get("page")) || 1;
 
   const [users, setUsers] = useState<User[]>([]);
@@ -126,6 +128,7 @@ const UserList: React.FC = () => {
   const [hasData, setHasData] = useState(true); // Track if any data exists
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [locations, setLocations] = useState<OfficeLocation[]>([]);
 
   // Pagination state
   const [page, setPage] = useState(initialPage);
@@ -161,10 +164,11 @@ const UserList: React.FC = () => {
     if (deptFilter !== "all") params.dept = deptFilter;
     if (roleFilter !== "all") params.role = roleFilter;
     if (typeFilter !== "all") params.type = typeFilter;
+    if (locationFilter !== "all") params.location = locationFilter;
     if (page > 1) params.page = page.toString();
     
     setSearchParams(params, { replace: true });
-  }, [debouncedSearchTerm, statusFilter, deptFilter, roleFilter, typeFilter, page, setSearchParams]);
+  }, [debouncedSearchTerm, statusFilter, deptFilter, roleFilter, typeFilter, locationFilter, page, setSearchParams]);
 
   // ─── Presence state ──────────────────────────────────────────────
   const [presenceMap, setPresenceMap] = useState<Map<string, EmployeePresence>>(new Map());
@@ -228,13 +232,17 @@ const UserList: React.FC = () => {
         filters.employmentType = typeFilter as EmploymentType;
       }
 
+      if (locationFilter !== "all") {
+        filters.location = locationFilter;
+      }
+
       const response = await userService.getAll(filters);
       setUsers(response.users);
       setTotal(response.total);
       setTotalPages(response.totalPages);
 
       // Only disable search if there's no data AND no active filters/search
-      const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all" || deptFilter !== "all" || roleFilter !== "all" || typeFilter !== "all";
+      const hasActiveFilters = debouncedSearchTerm.trim() || statusFilter !== "all" || deptFilter !== "all" || roleFilter !== "all" || typeFilter !== "all" || locationFilter !== "all";
       if (!hasActiveFilters && response.total === 0) {
         setHasData(false);
       } else if (response.total > 0) {
@@ -246,18 +254,20 @@ const UserList: React.FC = () => {
       setLoading(false);
       setIsInitialLoading(false);
     }
-  }, [debouncedSearchTerm, statusFilter, deptFilter, roleFilter, typeFilter, limit]);
+  }, [debouncedSearchTerm, statusFilter, deptFilter, roleFilter, typeFilter, locationFilter, limit]);
 
-  // Fetch departments and roles on mount
+  // Fetch departments, roles, and work locations on mount
   React.useEffect(() => {
     const loadFilters = async () => {
       try {
-        const [deptRes, roleRes] = await Promise.all([
+        const [deptRes, roleRes, locRes] = await Promise.all([
           departmentService.getAll({ limit: 100, isActive: true }),
-          roleService.getAll({ limit: 100, isActive: true })
+          roleService.getAll({ limit: 100, isActive: true }),
+          locationService.getAll({ limit: 100 })
         ]);
         setDepartments(deptRes.data);
         setRoles(roleRes.data);
+        setLocations(locRes.data);
       } catch (error) {
         console.error("Failed to fetch filters:", error);
       }
@@ -778,6 +788,16 @@ const UserList: React.FC = () => {
                   { value: "all", label: "All Status" },
                   { value: "active", label: "Active" },
                   { value: "inactive", label: "Inactive" },
+                ]
+              },
+              {
+                id: "location",
+                label: "Work Location",
+                value: locationFilter,
+                onChange: setLocationFilter,
+                options: [
+                  { value: "all", label: "All Locations" },
+                  ...locations.map(l => ({ value: l.name, label: l.name }))
                 ]
               }
             ]}

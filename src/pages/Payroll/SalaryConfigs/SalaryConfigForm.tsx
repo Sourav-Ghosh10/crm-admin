@@ -62,7 +62,7 @@ const SalaryConfigForm: React.FC<SalaryConfigFormProps> = ({
       isActive: initialValues?.isActive ?? true,
       items: initialValues?.items?.map(i => ({
         masterId: typeof i.masterId === 'string' ? i.masterId : (i.masterId as any)?._id,
-        overrideValue: i.overrideValue,
+        overrideValue: i.overrideValue ?? null,
         isActive: i.isActive
       })) || []
     }
@@ -107,7 +107,7 @@ const SalaryConfigForm: React.FC<SalaryConfigFormProps> = ({
   const employeeId = watch("employeeId");
 
   useEffect(() => {
-    if (!employeeId || monthlyCTC === undefined) return;
+    if (!employeeId || monthlyCTC === undefined || isNaN(monthlyCTC)) return;
 
     const fetchPreview = async () => {
       try {

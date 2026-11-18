@@ -56,6 +56,7 @@ export interface LeaveBalanceDetails {
     code: string;
     currentBalance: number | null;
     totalAllocated: number | null;
+    used?: number;
     isPaid: boolean;
 }
 
@@ -66,4 +67,60 @@ export interface EmployeeLeaveBalanceResponse {
     balances: LeaveBalanceDetails[];
     globalAvailableBalance?: number;
     totalLeaveBalance?: number;
+}
+
+export interface LeaveTypeSummary {
+    _id: string;
+    name: string;
+    code: string;
+    isPaid: boolean;
+    defaultAmount: number;
+}
+
+export interface EmployeeTypeBalanceItem {
+    leaveTypeId: string;
+    name: string;
+    code: string;
+    isPaid: boolean;
+    allocated: number;
+    approved: number;
+    pending: number;
+    used: number;
+    available: number | null;
+}
+
+export interface AllEmployeeLeaveBalanceItem {
+    _id: string;
+    userId: string;
+    employeeId: string;
+    username: string;
+    personalInfo: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        profilePicture?: string | null;
+    };
+    employment: {
+        department: string;
+        designation: string;
+        location?: string;
+    };
+    isPaidLeaveApplicable: boolean;
+    leaveBalances: EmployeeTypeBalanceItem[];
+    totalLeaveBalance: number;
+    approvedLeaves: number;
+    pendingLeaves: number;
+    usedLeaves: number;
+    availableBalance: number;
+}
+
+export interface PaginatedEmployeeBalancesResponse {
+    leaveTypes: LeaveTypeSummary[];
+    data: AllEmployeeLeaveBalanceItem[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        pages: number;
+    };
 }

@@ -206,7 +206,7 @@ export const attendanceService = {
     };
   },
 
-  getStats: async (params?: { date?: string; department?: string; designation?: string }) => {
+  getStats: async (params?: { date?: string; department?: string; designation?: string; location?: string }) => {
     const response = await api.get("/attendance/summary/stats", { params });
     return response.data.data;
   },

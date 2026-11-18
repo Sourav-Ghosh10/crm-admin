@@ -4,18 +4,20 @@ import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "../../store/slices/authSlice";
 import type { User } from "../../types/user.types";
 import type { AuthState } from "../../store/slices/authSlice";
-import type { Department, Designation, PaginatedResponse } from "../../types/organization.types";
+import type { Department, Designation, OfficeLocation, PaginatedResponse } from "../../types/organization.types";
 import type { Attendance as AttendanceType } from "../../types/attendance.types";
 import Attendance from "./Attendance";
 import { attendanceService } from "../../services/attendanceService";
 import { departmentService } from "../../services/departmentService";
 import { designationService } from "../../services/designationService";
+import { locationService } from "../../services/locationService";
 import { jest } from "@jest/globals";
 import { MemoryRouter } from "react-router-dom";
 
 jest.mock("../../services/attendanceService");
 jest.mock("../../services/departmentService");
 jest.mock("../../services/designationService");
+jest.mock("../../services/locationService");
 
 const createMockStore = (initialState = {}) => {
     return configureStore({
@@ -46,6 +48,7 @@ describe("Attendance Page", () => {
         } as unknown as { attendances: AttendanceType[], total: number, totalPages: number, page: number, limit: number });
         jest.mocked(departmentService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Department>);
         jest.mocked(designationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<Designation>);
+        jest.mocked(locationService.getAll).mockResolvedValue({ data: [], total: 0, page: 1, limit: 10, totalPages: 1 } as unknown as PaginatedResponse<OfficeLocation>);
     });
 
     it("renders attendance page", async () => {

@@ -16,7 +16,8 @@ import type { Attendance as AttendanceType, AttendanceFilters } from "../../type
 import { attendanceService } from "../../services/attendanceService";
 import { departmentService } from "../../services/departmentService";
 import { designationService } from "../../services/designationService";
-import type { Department, Designation } from "../../types/organization.types";
+import { locationService } from "../../services/locationService";
+import type { Department, Designation, OfficeLocation } from "../../types/organization.types";
 import { reportService } from "../../services/reportService";
 import systemSettingsService from "../../services/systemSettingsService";
 import { getPayrollCycleInterval } from "../../utils/payrollCycleUtils";
@@ -206,6 +207,7 @@ const Attendance: React.FC = () => {
     const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "all");
     const [departmentFilter, setDepartmentFilter] = useState<string>(searchParams.get("dept") || "all");
     const [designationFilter, setDesignationFilter] = useState<string>(searchParams.get("desig") || "all");
+    const [locationFilter, setLocationFilter] = useState<string>(searchParams.get("location") || "all");
     const initialPage = Number(searchParams.get("page")) || 1;
 
     const [records, setRecords] = useState<AttendanceRow[]>([]);
@@ -219,6 +221,7 @@ const Attendance: React.FC = () => {
     const [cycleSettings, setCycleSettings] = useState({ startDay: 1, endDay: 31 });
     const [departments, setDepartments] = useState<Department[]>([]);
     const [designations, setDesignations] = useState<Designation[]>([]);
+    const [locations, setLocations] = useState<OfficeLocation[]>([]);
     const [stats, setStats] = useState({
         total: 0,
         present: 0,
@@ -242,10 +245,11 @@ const Attendance: React.FC = () => {
         if (statusFilter !== "all") params.status = statusFilter;
         if (departmentFilter !== "all") params.dept = departmentFilter;
         if (designationFilter !== "all") params.desig = designationFilter;
+        if (locationFilter !== "all") params.location = locationFilter;
         if (page > 1) params.page = page.toString();
         
         setSearchParams(params, { replace: true });
-    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter, page, limit, setSearchParams]);
+    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter, locationFilter, page, limit, setSearchParams]);
 
     // Data helpers
     const authUser = useAppSelector((state) => state.auth.user);
@@ -298,6 +302,10 @@ const Attendance: React.FC = () => {
                 filters.designation = designationFilter;
             }
 
+            if (locationFilter !== "all") {
+                filters.location = locationFilter;
+            }
+
             if (!authUser?.isAdmin) {
                 filters.userId = authUser?._id || authUser?.id;
             }
@@ -309,7 +317,8 @@ const Attendance: React.FC = () => {
                 attendanceService.getStats({
                     date: startDate,
                     department: departmentFilter !== "all" ? departmentFilter : undefined,
-                    designation: designationFilter !== "all" ? designationFilter : undefined
+                    designation: designationFilter !== "all" ? designationFilter : undefined,
+                    location: locationFilter !== "all" ? locationFilter : undefined
                 }),
                 attendanceService.getLastActiveLocations().catch(() => [] as Awaited<ReturnType<typeof attendanceService.getLastActiveLocations>>),
             ]);
@@ -340,20 +349,22 @@ const Attendance: React.FC = () => {
             setLoading(false);
             setIsInitialLoading(false);
         }
-    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter, limit, authUser]);
+    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter, locationFilter, limit, authUser]);
 
 
-    // Fetch Departments, Designations & Payroll settings
+    // Fetch Departments, Designations, Locations & Payroll settings
     useEffect(() => {
         const fetchDeps = async () => {
             try {
-                const [depsResp, desigResp, cycleResp] = await Promise.all([
+                const [depsResp, desigResp, locResp, cycleResp] = await Promise.all([
                     departmentService.getAll({ limit: 100 }),
                     designationService.getAll({ limit: 100 }),
+                    locationService.getAll({ limit: 100 }),
                     systemSettingsService.getSettingByKey("payroll_cycle_settings").catch(() => null)
                 ]);
                 setDepartments(depsResp.data);
                 setDesignations(desigResp.data);
+                setLocations(locResp.data);
                 if (cycleResp && cycleResp.value) {
                     setCycleSettings({
                         startDay: Number(cycleResp.value.startDay || 1),
@@ -361,7 +372,7 @@ const Attendance: React.FC = () => {
                     });
                 }
             } catch (err) {
-                console.error("Failed to fetch departments/designations/payroll:", err);
+                console.error("Failed to fetch departments/designations/locations/payroll:", err);
             }
         };
         fetchDeps();
@@ -370,7 +381,7 @@ const Attendance: React.FC = () => {
     // Effects
     useEffect(() => {
         setPage(1);
-    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter]);
+    }, [debouncedSearchTerm, statusFilter, departmentFilter, designationFilter, locationFilter]);
 
     useEffect(() => {
         fetchRecords(page);
@@ -431,6 +442,7 @@ const Attendance: React.FC = () => {
                 status: apiStatus !== 'all' ? apiStatus : undefined,
                 department: departmentFilter !== 'all' ? departmentFilter : undefined,
                 designation: designationFilter !== 'all' ? designationFilter : undefined,
+                location: locationFilter !== 'all' ? locationFilter : undefined,
                 search: debouncedSearchTerm.trim() || undefined,
             });
             setIsExportModalOpen(false);
@@ -1024,6 +1036,19 @@ const Attendance: React.FC = () => {
                                     ...designations.map(des => ({
                                         value: des.title || des.name || "",
                                         label: des.title || des.name || "Unknown"
+                                    }))
+                                ]
+                            },
+                            {
+                                id: "location",
+                                label: "Work Location",
+                                value: locationFilter,
+                                onChange: setLocationFilter,
+                                options: [
+                                    { value: "all", label: "All Locations" },
+                                    ...locations.map(loc => ({
+                                        value: loc.name,
+                                        label: loc.name
                                     }))
                                 ]
                             }
