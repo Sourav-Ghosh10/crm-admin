@@ -38,6 +38,7 @@ import UnifiedFilter from "../../components/common/Filter/UnifiedFilter";
 import FilterDropdown from "../../components/common/Filter/FilterDropdown";
 import Pagination from "../../components/common/Pagination";
 import { getErrorMessage } from "../../utils/errorHandling";
+import { useAppSelector } from "../../store/hooks";
 import { SearchInput } from "../../components/common/Search/SearchInput";
 import { usePermissions } from "../../hooks/usePermissions";
 import { PERMISSIONS } from "../../config/permissions";
@@ -129,6 +130,31 @@ const UserList: React.FC = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [locations, setLocations] = useState<OfficeLocation[]>([]);
+
+  // Restrict locations if current admin user has allowedLocations set (Super Admin is never restricted)
+  const authUser = useAppSelector((state) => state.auth.user);
+  const authRoleName =
+    authUser?.employment?.role && typeof authUser.employment.role === 'object'
+      ? (authUser.employment.role as { name?: string }).name
+      : authUser?.employment?.role;
+  const isSuperAdmin = String(authRoleName).toLowerCase() === 'super admin';
+
+  const isLocationRestricted = Boolean(
+    !isSuperAdmin &&
+    authUser?.isAdmin &&
+    Array.isArray(authUser?.allowedLocations) &&
+    authUser.allowedLocations.length > 0 &&
+    !authUser.allowedLocations.includes('all') &&
+    !authUser.allowedLocations.includes('*')
+  );
+
+  const availableLocations = React.useMemo(() => {
+    if (!isLocationRestricted || !authUser?.allowedLocations) {
+      return locations;
+    }
+    const allowed = authUser.allowedLocations.map(l => l.trim().toLowerCase());
+    return locations.filter(l => allowed.includes(l.name.trim().toLowerCase()));
+  }, [locations, isLocationRestricted, authUser?.allowedLocations]);
 
   // Pagination state
   const [page, setPage] = useState(initialPage);
@@ -295,6 +321,13 @@ const UserList: React.FC = () => {
   };
 
   const handleEditUser = (user: User) => {
+    const isSelf = Boolean(
+      authUser && (
+        String(authUser._id || authUser.id) === String(user._id || user.id) ||
+        (authUser.employeeId && authUser.employeeId === user.employeeId)
+      )
+    );
+    if (isSelf) return;
     navigate(`/users/edit/${user._id}`);
   };
 
@@ -613,62 +646,70 @@ const UserList: React.FC = () => {
       _id: "actions",
       label: "Actions",
       align: "center" as const,
-      format: (_: unknown, row: User) => (
-        <div className="flex items-center justify-center gap-2 pr-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate(`/users/${row._id}`)}
-            className="w-9 h-9 rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all group"
-            title="View Insight"
-          >
-            <Eye className="w-4 h-4 group-hover:scale-110 transition-transform" />
-          </Button>
+      format: (_: unknown, row: User) => {
+        const isSelf = Boolean(
+          authUser && (
+            String(authUser._id || authUser.id) === String(row._id || row.id) ||
+            (authUser.employeeId && authUser.employeeId === row.employeeId)
+          )
+        );
 
-          {canEdit && (
+        return (
+          <div className="flex items-center justify-center gap-2 pr-2">
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => handleEditUser(row)}
-              className="w-9 h-9 rounded-xl hover:bg-accent/10 hover:text-foreground text-foreground-secondary transition-all group"
-              title="Modify"
+              onClick={() => navigate(`/users/${row._id}`)}
+              className="w-9 h-9 rounded-xl hover:bg-primary/10 hover:text-primary text-foreground-secondary transition-all group"
+              title="View Insight"
             >
-              <Edit className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <Eye className="w-4 h-4 group-hover:scale-110 transition-transform" />
             </Button>
-          )}
 
-          {canEdit && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleOpenPasswordModal(row)}
-              className="w-9 h-9 rounded-xl hover:bg-amber-500/10 hover:text-amber-600 text-foreground-secondary transition-all group"
-              title="Change Password"
-            >
-              <KeyRound className="w-4 h-4 group-hover:scale-110 transition-transform" />
-            </Button>
-          )}
+            {canEdit && !isSelf && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleEditUser(row)}
+                className="w-9 h-9 rounded-xl hover:bg-accent/10 hover:text-foreground text-foreground-secondary transition-all group"
+                title="Modify"
+              >
+                <Edit className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              </Button>
+            )}
 
-          {canDelete && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleToggleStatus(row)}
-              className={cn(
-                "w-9 h-9 rounded-xl transition-all group",
-                row.isActive
-                  ? "hover:bg-warning/10 hover:text-warning text-foreground-secondary"
-                  : "hover:bg-success/10 hover:text-success text-foreground-secondary"
-              )}
-              title={row.isActive ? "Deactivate User" : "Activate User"}
-            >
-              {row.isActive ? (
-                <UserX className="w-4 h-4 group-hover:scale-110 transition-transform" />
-              ) : (
-                <UserCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
-              )}
-            </Button>
-          )}
+            {canEdit && !isSelf && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleOpenPasswordModal(row)}
+                className="w-9 h-9 rounded-xl hover:bg-amber-500/10 hover:text-amber-600 text-foreground-secondary transition-all group"
+                title="Change Password"
+              >
+                <KeyRound className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              </Button>
+            )}
+
+            {canDelete && !isSelf && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleToggleStatus(row)}
+                className={cn(
+                  "w-9 h-9 rounded-xl transition-all group",
+                  row.isActive
+                    ? "hover:bg-warning/10 hover:text-warning text-foreground-secondary"
+                    : "hover:bg-success/10 hover:text-success text-foreground-secondary"
+                )}
+                title={row.isActive ? "Deactivate User" : "Activate User"}
+              >
+                {row.isActive ? (
+                  <UserX className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                ) : (
+                  <UserCheck className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                )}
+              </Button>
+            )}
 
           {canManageSchedule && (
             <Button
@@ -682,7 +723,8 @@ const UserList: React.FC = () => {
             </Button>
           )}
         </div>
-      ),
+        );
+      },
     },
   ];
 
@@ -796,8 +838,10 @@ const UserList: React.FC = () => {
                 value: locationFilter,
                 onChange: setLocationFilter,
                 options: [
-                  { value: "all", label: "All Locations" },
-                  ...locations.map(l => ({ value: l.name, label: l.name }))
+                  ...(availableLocations.length > 1 || !isLocationRestricted
+                    ? [{ value: "all", label: isLocationRestricted ? "All Permitted Locations" : "All Locations" }]
+                    : []),
+                  ...availableLocations.map(l => ({ value: l.name, label: l.name }))
                 ]
               }
             ]}

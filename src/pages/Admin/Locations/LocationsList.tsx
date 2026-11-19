@@ -9,6 +9,7 @@ import {
     Archive,
     RefreshCw,
     Clock,
+    Navigation,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -129,7 +130,13 @@ const LocationsList: React.FC = () => {
             },
             isActive: true,
             isHeadquarters: false,
-            timezone: "Asia/Kolkata"
+            timezone: "Asia/Kolkata",
+            radius: 100,
+            geofencingEnabled: true,
+            coordinates: {
+                latitude: null as any,
+                longitude: null as any,
+            }
         });
         setError(null);
         setIsModalOpen(true);
@@ -220,6 +227,29 @@ const LocationsList: React.FC = () => {
                             {row.timezone}
                         </span>
                     </div>
+                </div>
+            )
+        },
+        {
+            _id: "geofence",
+            label: "Geofence",
+            format: (_: unknown, row: OfficeLocation) => (
+                <div className="space-y-1">
+                    {row.geofencingEnabled && row.coordinates?.latitude && row.coordinates?.longitude ? (
+                        <div>
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                                <Navigation className="w-3 h-3 text-emerald-500" />
+                                {row.radius || 100}m Radius
+                            </span>
+                            <div className="text-[10px] text-foreground-tertiary mt-1 font-mono tracking-tight">
+                                {row.coordinates.latitude.toFixed(4)}, {row.coordinates.longitude.toFixed(4)}
+                            </div>
+                        </div>
+                    ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold text-foreground-tertiary bg-muted/50 border border-border/40">
+                            Disabled
+                        </span>
+                    )}
                 </div>
             )
         },

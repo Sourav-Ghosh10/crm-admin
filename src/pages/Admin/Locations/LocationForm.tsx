@@ -1,8 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
 import { useForm, Controller, type Resolver } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { Building2, MapPin, Phone, Mail, Globe, Hash, Clock } from "lucide-react";
+import { Building2, MapPin, Phone, Mail, Globe, Hash, Clock, Navigation, LocateFixed, ShieldCheck } from "lucide-react";
 import Input from "../../../components/common/Input";
 import Button from "../../../components/common/Button";
 import type { OfficeLocation } from "../../../types/organization.types";
@@ -24,6 +24,31 @@ const schema = yup.object({
     isHeadquarters: yup.boolean().default(false),
     isActive: yup.boolean().default(true),
     timezone: yup.string().required("Timezone is required").trim().max(50, "Timezone cannot exceed 50 characters").default("Asia/Kolkata"),
+    coordinates: yup.object({
+        latitude: yup
+            .number()
+            .transform((value, originalValue) => (String(originalValue).trim() === "" ? null : value))
+            .nullable()
+            .optional()
+            .min(-90, "Latitude must be between -90 and 90")
+            .max(90, "Latitude must be between -90 and 90"),
+        longitude: yup
+            .number()
+            .transform((value, originalValue) => (String(originalValue).trim() === "" ? null : value))
+            .nullable()
+            .optional()
+            .min(-180, "Longitude must be between -180 and 180")
+            .max(180, "Longitude must be between -180 and 180"),
+    }).optional(),
+    radius: yup
+        .number()
+        .transform((value, originalValue) => (String(originalValue).trim() === "" ? 100 : value))
+        .nullable()
+        .optional()
+        .min(5, "Minimum radius is 5 meters")
+        .max(50000, "Maximum radius is 50,000 meters")
+        .default(100),
+    geofencingEnabled: yup.boolean().default(true),
 });
 
 type LocationFormData = yup.InferType<typeof schema>;
@@ -46,7 +71,9 @@ const LocationForm: React.FC<LocationFormProps> = ({
     isLoading,
     error,
 }) => {
-    const { control, handleSubmit, formState: { errors } } = useForm<LocationFormData>({
+    const [isLocating, setIsLocating] = useState(false);
+
+    const { control, handleSubmit, setValue, formState: { errors } } = useForm<LocationFormData>({
         mode: "onChange",
         resolver: yupResolver(schema) as Resolver<LocationFormData>,
         defaultValues: {
@@ -65,8 +92,67 @@ const LocationForm: React.FC<LocationFormProps> = ({
             isHeadquarters: initialValues?.isHeadquarters || false,
             isActive: initialValues?.isActive ?? true,
             timezone: initialValues?.timezone || "Asia/Kolkata",
+            coordinates: {
+                latitude: initialValues?.coordinates?.latitude ?? (null as any),
+                longitude: initialValues?.coordinates?.longitude ?? (null as any),
+            },
+            radius: initialValues?.radius ?? 100,
+            geofencingEnabled: initialValues?.geofencingEnabled ?? true,
         },
     });
+
+    const handleGetCurrentLocation = () => {
+        setIsLocating(true);
+
+        const tryIpFallback = async () => {
+            try {
+                const res = await fetch("https://ipwho.is/");
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data && data.success !== false && typeof data.latitude === "number" && typeof data.longitude === "number") {
+                        setValue("coordinates.latitude", Number(data.latitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                        setValue("coordinates.longitude", Number(data.longitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                        setIsLocating(false);
+                        return;
+                    }
+                }
+            } catch {}
+
+            try {
+                const res2 = await fetch("https://freeipapi.com/api/json");
+                if (res2.ok) {
+                    const data2 = await res2.json();
+                    if (data2 && typeof data2.latitude === "number" && typeof data2.longitude === "number") {
+                        setValue("coordinates.latitude", Number(data2.latitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                        setValue("coordinates.longitude", Number(data2.longitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                        setIsLocating(false);
+                        return;
+                    }
+                }
+            } catch {}
+
+            setIsLocating(false);
+            alert("Unable to detect coordinates automatically. Please enter Latitude & Longitude manually.");
+        };
+
+        if (!navigator.geolocation) {
+            tryIpFallback();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setValue("coordinates.latitude", Number(position.coords.latitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                setValue("coordinates.longitude", Number(position.coords.longitude.toFixed(7)), { shouldValidate: true, shouldDirty: true });
+                setIsLocating(false);
+            },
+            () => {
+                // If browser GPS/Wi-Fi positioning fails on PC, seamlessly use IP location
+                tryIpFallback();
+            },
+            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
+    };
 
     return (
         <form id="location-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -284,6 +370,128 @@ const LocationForm: React.FC<LocationFormProps> = ({
                             </label>
                         )}
                     />
+                </div>
+
+                {/* Geofencing & GPS Attendance Settings */}
+                <div className="md:col-span-6 mt-3 pt-5 border-t border-border/60">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <Navigation className="w-4 h-4 text-primary" />
+                                <h4 className="text-sm font-bold text-foreground">Attendance Geofencing & GPS</h4>
+                            </div>
+                            <p className="text-xs text-foreground-tertiary mt-0.5">
+                                Restrict employee clock-in and clock-out to within this office location's meter radius.
+                            </p>
+                        </div>
+                        <Controller
+                            name="geofencingEnabled"
+                            control={control}
+                            render={({ field }) => (
+                                <label className="inline-flex items-center cursor-pointer group select-none">
+                                    <div className="relative">
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only"
+                                            checked={field.value}
+                                            onChange={field.onChange}
+                                        />
+                                        <div className={cn(
+                                            "w-10 h-5 bg-muted rounded-full transition-colors border border-border",
+                                            field.value && "bg-emerald-500/20 border-emerald-500/40"
+                                        )} />
+                                        <div className={cn(
+                                            "absolute left-1 top-1 w-3 h-3 bg-foreground-tertiary rounded-full transition-all",
+                                            field.value && "translate-x-5 bg-emerald-600"
+                                        )} />
+                                    </div>
+                                    <span className={cn(
+                                        "ml-2.5 text-xs font-bold transition-colors",
+                                        field.value ? "text-emerald-600" : "text-foreground-tertiary"
+                                    )}>
+                                        {field.value ? "Geofence Enabled" : "Geofence Disabled"}
+                                    </span>
+                                </label>
+                            )}
+                        />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-3 bg-muted/20 p-4 rounded-2xl border border-border/50">
+                        <div className="md:col-span-2">
+                            <Controller
+                                name="coordinates.latitude"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        {...field}
+                                        value={field.value ?? ""}
+                                        label="Office Latitude"
+                                        placeholder="e.g. 22.5726"
+                                        error={!!errors.coordinates?.latitude}
+                                        helperText={errors.coordinates?.latitude?.message}
+                                        startAdornment={<MapPin className="w-4 h-4 text-foreground-tertiary" />}
+                                        type="number"
+                                        step="any"
+                                    />
+                                )}
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <Controller
+                                name="coordinates.longitude"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        {...field}
+                                        value={field.value ?? ""}
+                                        label="Office Longitude"
+                                        placeholder="e.g. 88.3639"
+                                        error={!!errors.coordinates?.longitude}
+                                        helperText={errors.coordinates?.longitude?.message}
+                                        startAdornment={<MapPin className="w-4 h-4 text-foreground-tertiary" />}
+                                        type="number"
+                                        step="any"
+                                    />
+                                )}
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <Controller
+                                name="radius"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        {...field}
+                                        value={field.value ?? ""}
+                                        label="Allowed Radius (Meters)"
+                                        placeholder="100"
+                                        error={!!errors.radius}
+                                        helperText={errors.radius?.message || "Default: 100 meters"}
+                                        startAdornment={<ShieldCheck className="w-4 h-4 text-foreground-tertiary" />}
+                                        type="number"
+                                        min={5}
+                                        max={50000}
+                                    />
+                                )}
+                            />
+                        </div>
+                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                            <span className="text-foreground-tertiary">
+                                💡 Tip: Click to auto-detect this device&apos;s current GPS coordinates.
+                            </span>
+                            <Button
+                                type="button"
+                                variant="secondaryOutline"
+                                size="sm"
+                                className="gap-1.5 h-8 text-xs font-semibold"
+                                onClick={handleGetCurrentLocation}
+                                disabled={isLocating}
+                            >
+                                <LocateFixed className={cn("w-3.5 h-3.5 text-primary", isLocating && "animate-spin")} />
+                                {isLocating ? "Detecting GPS..." : "Use Current Location"}
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             </div>
 

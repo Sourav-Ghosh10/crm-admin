@@ -99,6 +99,24 @@ export const loginWithGoogle = createAsyncThunk(
   },
 );
 
+export const loginWithSSO = createAsyncThunk(
+  "auth/loginWithSSO",
+  async (ssoToken: string, { rejectWithValue }) => {
+    try {
+      const { authService } = await import("../../services/authService");
+      const response = await authService.loginWithSSO(ssoToken);
+      if (!response.success) {
+        return rejectWithValue("SSO Login failed");
+      }
+      return response.data;
+    } catch (error: unknown) {
+      const errorMessage = getErrorMessage(error, "SSO Login failed");
+      const message = Array.isArray(errorMessage) ? errorMessage.join(", ") : errorMessage;
+      return rejectWithValue(message);
+    }
+  },
+);
+
 export const logout = createAsyncThunk("auth/logout", async () => {
   const { authService } = await import("../../services/authService");
   await authService.logout();
@@ -185,6 +203,25 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(loginWithGoogle.rejected, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = false;
+        state.user = null;
+        state.error = action.payload as string;
+      })
+      // SSO Login
+      .addCase(loginWithSSO.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(loginWithSSO.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.isAuthenticated = true;
+        state.user = action.payload.user;
+        state.permissions = extractPermissions(action.payload.user);
+        state.isInitialized = true;
+        state.error = null;
+      })
+      .addCase(loginWithSSO.rejected, (state, action) => {
         state.isLoading = false;
         state.isAuthenticated = false;
         state.user = null;

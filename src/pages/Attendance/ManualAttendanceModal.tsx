@@ -7,7 +7,10 @@ import {
     CheckCircle2,
     Trash2,
     Info,
-    Sparkles
+    Sparkles,
+    Globe,
+    Activity,
+    FileText,
 } from "lucide-react";
 import Modal from "../../components/common/Modal/Modal";
 import Button from "../../components/common/Button/Button";
@@ -304,20 +307,22 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
             open={open}
             onClose={onClose}
             title="Manual Clock In / Out"
-            maxWidth="sm"
+            maxWidth="md"
+            className="max-w-xl"
             actions={
                 <div className="flex items-center justify-between w-full">
                     {currentRecord && (currentRecord.checkIn?.time || (currentRecord.sessions && currentRecord.sessions.length > 0)) ? (
-                        <button
+                        <Button
                             type="button"
+                            variant="ghost"
                             onClick={handleClearPunches}
                             disabled={isSubmitting}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-error hover:bg-error/10 rounded-xl transition-colors border border-error/20"
+                            className="text-error hover:bg-error/10 hover:text-error border border-error/20 text-xs font-semibold px-3 py-2 rounded-xl transition-colors flex items-center gap-1.5"
                             title="Reset punches for this date"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
                             <span>Clear Punches</span>
-                        </button>
+                        </Button>
                     ) : (
                         <div />
                     )}
@@ -327,7 +332,7 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                             variant="secondary"
                             onClick={onClose}
                             disabled={isSubmitting}
-                            className="text-xs font-bold px-4 py-2"
+                            className="text-xs font-semibold px-4 py-2 rounded-xl"
                         >
                             Cancel
                         </Button>
@@ -335,7 +340,7 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                             onClick={() => handleSubmit()}
                             disabled={isSubmitting}
                             isLoading={isSubmitting}
-                            className="text-xs font-bold px-5 py-2 flex items-center gap-1.5"
+                            className="text-xs font-semibold px-5 py-2 rounded-xl shadow-md shadow-primary/20 flex items-center gap-1.5"
                         >
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>Save Changes</span>
@@ -344,65 +349,80 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                 </div>
             }
         >
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Employee Info Header */}
-                <div className="flex items-center justify-between p-3.5 bg-muted/30 rounded-2xl border border-border/50">
-                    <div>
-                        <p className="text-xs font-black text-foreground uppercase tracking-tight">
-                            {employee?.personalInfo?.firstName} {employee?.personalInfo?.lastName}
-                        </p>
-                        <p className="text-[10px] text-foreground-tertiary font-mono font-bold mt-0.5">
-                            ID: {employee?.employeeId || employee?._id}
-                        </p>
+                <div className="flex items-center justify-between p-3.5 bg-muted/40 rounded-2xl border border-border/60">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 text-primary font-bold text-sm flex items-center justify-center shrink-0">
+                            {(employee?.personalInfo?.firstName?.[0] || 'E')}{(employee?.personalInfo?.lastName?.[0] || '')}
+                        </div>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <p className="text-sm font-bold text-foreground truncate">
+                                    {employee?.personalInfo?.firstName} {employee?.personalInfo?.lastName}
+                                </p>
+                                <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-surface text-foreground-secondary border border-border/60">
+                                    {employee?.employeeId || employee?._id?.slice(-6)}
+                                </span>
+                            </div>
+                            <p className="text-xs text-foreground-secondary truncate mt-0.5">
+                                {employee?.employment?.designation || employee?.employment?.department || 'Employee'}
+                            </p>
+                        </div>
                     </div>
-                    <div className="text-right">
-                        <span className="inline-block px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-md text-[9px] font-black uppercase tracking-wider">
+                    <div className="text-right shrink-0">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary/10 text-primary border border-primary/20 rounded-lg text-xs font-semibold">
+                            <Globe className="w-3.5 h-3.5" />
                             {employeeTimezone}
                         </span>
-                        <p className="text-[9px] text-foreground-tertiary font-medium mt-0.5">Timezone</p>
+                        <p className="text-[10px] text-foreground-tertiary mt-0.5">Assigned Timezone</p>
                     </div>
                 </div>
 
-                {/* Date Input */}
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-foreground-secondary flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-primary" />
-                        Attendance Date
-                    </label>
-                    <Input
-                        type="date"
-                        value={date}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="rounded-xl border-border/60 text-xs font-bold h-10 w-full"
-                        required
-                    />
-                </div>
+                {/* Date & Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Attendance Date */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-primary" />
+                            Attendance Date
+                        </label>
+                        <Input
+                            type="date"
+                            value={date}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="rounded-xl border-border/70 text-xs font-semibold h-10 w-full bg-surface"
+                            required
+                        />
+                    </div>
 
-                {/* Status Selector */}
-                <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-foreground-secondary">
-                        Status
-                    </label>
-                    <FormSelect
-                        value={status}
-                        onChange={(val) => setStatus(val)}
-                        options={[
-                            { value: "present", label: "Present" },
-                            { value: "late", label: "Late" },
-                            { value: "half-day", label: "Half Day" },
-                            { value: "absent", label: "Absent" },
-                            { value: "on-leave", label: "On Leave" },
-                            { value: "weekend", label: "Weekend / Off Day" },
-                        ]}
-                        className="rounded-xl border-border/60 text-xs font-bold h-10"
-                    />
+                    {/* Status Selector */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                            <Activity className="w-3.5 h-3.5 text-primary" />
+                            Status
+                        </label>
+                        <FormSelect
+                            value={status}
+                            onChange={(val) => setStatus(val)}
+                            options={[
+                                { value: "present", label: "Present" },
+                                { value: "late", label: "Late" },
+                                { value: "half-day", label: "Half Day" },
+                                { value: "absent", label: "Absent" },
+                                { value: "on-leave", label: "On Leave" },
+                                { value: "weekend", label: "Weekend / Off Day" },
+                            ]}
+                            className="rounded-xl border-border/70 text-xs font-semibold h-10"
+                        />
+                    </div>
                 </div>
 
                 {status === "absent" ? (
-                    <div className="p-3.5 bg-error/5 border border-error/20 rounded-xl text-error flex items-start gap-2.5">
+                    <div className="p-3.5 bg-error/10 border border-error/20 rounded-2xl text-error flex items-start gap-2.5 animate-in fade-in">
                         <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
                         <div className="text-xs leading-relaxed font-medium">
-                            Setting the status to <strong className="font-bold">Absent</strong> will reset and clear any clock-in/out timestamps for this day.
+                            Setting the status to <strong className="font-bold">Absent</strong> will reset and clear any clock-in / clock-out punches for this day.
                         </div>
                     </div>
                 ) : (
@@ -410,31 +430,34 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         {/* Clock In / Out Times Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                             {/* Clock In */}
-                            <div className="space-y-1.5 p-3.5 bg-muted/20 rounded-2xl border border-border/40">
-                                <label className="text-[10px] font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                                    <Clock className="w-3.5 h-3.5 text-success" />
-                                    Clock In Time
-                                </label>
+                            <div className="p-3.5 bg-muted/20 rounded-2xl border border-border/60 space-y-2">
+                                <div className="flex items-center justify-between pb-1 border-b border-border/40">
+                                    <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5 text-emerald-600" />
+                                        Clock In Time
+                                    </label>
+                                    <span className="text-[10px] text-foreground-tertiary font-mono">24h format</span>
+                                </div>
                                 <Input
                                     type="time"
                                     value={checkInTime}
                                     onChange={(e) => setCheckInTime(e.target.value)}
-                                    className="rounded-xl border-border/60 text-xs font-mono font-bold h-9 w-full bg-surface"
+                                    className="rounded-xl border-border/70 text-sm font-mono font-bold h-10 w-full bg-surface text-center"
                                     required={status !== "absent"}
                                 />
-                                <p className="text-[9px] text-foreground-tertiary">
-                                    24h format in {employeeTimezone}
+                                <p className="text-[10px] text-foreground-tertiary text-center">
+                                    Timezone: {employeeTimezone}
                                 </p>
                             </div>
 
                             {/* Clock Out */}
-                            <div className="space-y-1.5 p-3.5 bg-muted/20 rounded-2xl border border-border/40">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                                        <Clock className="w-3.5 h-3.5 text-error" />
+                            <div className="p-3.5 bg-muted/20 rounded-2xl border border-border/60 space-y-2">
+                                <div className="flex items-center justify-between pb-1 border-b border-border/40">
+                                    <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                                        <Clock className="w-3.5 h-3.5 text-rose-600" />
                                         Clock Out Time
                                     </label>
-                                    <label className="flex items-center gap-1 text-[9px] font-bold text-primary cursor-pointer">
+                                    <label className="flex items-center gap-1.5 text-xs font-bold text-primary cursor-pointer select-none">
                                         <input
                                             type="checkbox"
                                             checked={isWorking}
@@ -442,9 +465,9 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                                 setIsWorking(e.target.checked);
                                                 if (e.target.checked) setCheckOutTime("");
                                             }}
-                                            className="rounded text-primary focus:ring-primary w-3 h-3"
+                                            className="rounded text-primary focus:ring-primary w-3.5 h-3.5 cursor-pointer"
                                         />
-                                        Working
+                                        <span>Working</span>
                                     </label>
                                 </div>
 
@@ -454,28 +477,32 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                                             type="time"
                                             value={checkOutTime}
                                             onChange={(e) => setCheckOutTime(e.target.value)}
-                                            className="rounded-xl border-border/60 text-xs font-mono font-bold h-9 w-full bg-surface"
+                                            className="rounded-xl border-border/70 text-sm font-mono font-bold h-10 w-full bg-surface text-center"
                                         />
                                         <div className="flex items-center justify-between pt-0.5">
-                                            <p className="text-[9px] text-foreground-tertiary">
-                                                24h format
-                                            </p>
-                                            <label className="flex items-center gap-1 text-[9px] font-bold text-foreground-secondary cursor-pointer">
+                                            <label className="flex items-center gap-1 text-[11px] font-semibold text-foreground-secondary cursor-pointer select-none">
                                                 <input
                                                     type="checkbox"
                                                     checked={isOvernight}
                                                     onChange={(e) => setIsOvernight(e.target.checked)}
-                                                    className="rounded text-primary focus:ring-primary w-3 h-3"
+                                                    className="rounded text-primary focus:ring-primary w-3 h-3 cursor-pointer"
                                                 />
                                                 Next Day (+1d)
                                             </label>
+                                            <span className="text-[10px] text-foreground-tertiary font-mono">
+                                                24h format
+                                            </span>
                                         </div>
                                     </>
                                 ) : (
-                                    <div className="h-9 flex items-center px-3 bg-primary/10 border border-primary/20 rounded-xl">
-                                        <span className="text-[10px] font-black text-primary uppercase tracking-wider animate-pulse">
-                                            Currently Working (Open Shift)
-                                        </span>
+                                    <div className="h-[62px] flex flex-col items-center justify-center p-2 bg-primary/10 border border-primary/20 rounded-xl text-center">
+                                        <div className="flex items-center gap-1.5 text-primary font-bold text-xs">
+                                            <span className="w-2 h-2 rounded-full bg-primary animate-ping" />
+                                            <span>Currently Working</span>
+                                        </div>
+                                        <p className="text-[10px] text-primary/80 font-medium mt-0.5">
+                                            Open shift (no clock-out yet)
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -483,12 +510,21 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                         {/* Duration preview */}
                         {calculatedDuration && (
-                            <div className="flex items-center justify-between px-3.5 py-2 bg-success/10 border border-success/20 rounded-xl text-success">
-                                <span className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
-                                    <Sparkles className="w-3.5 h-3.5" />
+                            <div className="flex items-center justify-between px-3.5 py-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-700 animate-in fade-in">
+                                <span className="text-xs font-semibold flex items-center gap-1.5">
+                                    <Sparkles className="w-4 h-4 text-emerald-600" />
                                     Estimated Shift Duration
                                 </span>
-                                <span className="text-xs font-black font-mono">{calculatedDuration}</span>
+                                <div className="flex items-center gap-2">
+                                    {isOvernight && (
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 border border-amber-500/20">
+                                            Overnight (+1d)
+                                        </span>
+                                    )}
+                                    <span className="text-xs font-bold font-mono px-2 py-0.5 rounded bg-surface shadow-xs border border-emerald-500/20">
+                                        {calculatedDuration}
+                                    </span>
+                                </div>
                             </div>
                         )}
                     </>
@@ -496,7 +532,8 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
 
                 {/* Remarks / Reason */}
                 <div className="space-y-1.5">
-                    <label className="text-[10px] font-black uppercase tracking-wider text-foreground-secondary">
+                    <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5 text-foreground-secondary" />
                         Remarks / Reason for Manual Entry
                     </label>
                     <Input
@@ -504,7 +541,7 @@ export const ManualAttendanceModal: React.FC<ManualAttendanceModalProps> = ({
                         placeholder="e.g. Card forgotten, Biometric reader issue, Approved manual punch"
                         value={remarks}
                         onChange={(e) => setRemarks(e.target.value)}
-                        className="rounded-xl border-border/60 text-xs h-9 w-full"
+                        className="rounded-xl border-border/70 text-xs h-10 w-full bg-surface"
                     />
                 </div>
             </form>

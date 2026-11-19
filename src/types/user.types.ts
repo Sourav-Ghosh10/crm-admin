@@ -79,6 +79,7 @@ export interface User {
     canViewReports: boolean;
   };
   allowedIPs: string[];
+  allowedLocations?: string[];
   leaveBalance: Record<string, number>;
   isActive: boolean;
   isHolidayApplicable: boolean;

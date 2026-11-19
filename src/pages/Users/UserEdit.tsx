@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Loader2, Sparkles } from "lucide-react";
+import { Loader2, Sparkles, ShieldAlert } from "lucide-react";
 import UserForm from "./UserForm";
 import type { User } from "../../types/user.types";
 import Button from "../../components/common/Button";
@@ -12,6 +12,7 @@ import { designationService } from "../../services/designationService";
 import { leaveTypeService } from "../../services/leaveTypeService";
 import type { OfficeLocation, Department, Designation, LeaveType } from "../../types/organization.types";
 import { getErrorMessage } from "../../utils/errorHandling";
+import { useAppSelector } from "../../store/hooks";
 
 import { roleService } from "../../services/roleService";
 import type { Role } from "../../types/role.types";
@@ -107,11 +108,19 @@ const UserEdit: React.FC = () => {
         }
     }, [hasMoreUsers, isUsersLoadingMore, userPage, userSearchText]);
 
+    const authUser = useAppSelector((state) => state.auth.user);
+    const isSelf = Boolean(
+        authUser && user && (
+            String(authUser._id || authUser.id) === String(user._id || user.id) ||
+            (authUser.employeeId && authUser.employeeId === user.employeeId)
+        )
+    );
+
     const handleSave = async (data: Partial<User>) => {
+        if (!id || isSelf) return;
         setSaving(true);
         setError(null);
         try {
-            if (!id) return;
             await userService.update(id, data);
             navigate(`/users/${id}`);
         } catch (error) {
@@ -137,6 +146,28 @@ const UserEdit: React.FC = () => {
             <div className="text-center py-20">
                 <h2 className="text-2xl font-bold">Employee Not Found</h2>
                 <Button onClick={() => navigate(-1)} className="mt-4">Return to Directory</Button>
+            </div>
+        );
+    }
+
+    if (isSelf) {
+        return (
+            <div className="max-w-xl mx-auto my-16 p-8 rounded-3xl bg-surface border border-error/20 shadow-2xl text-center space-y-4 animate-in fade-in duration-300">
+                <div className="w-16 h-16 rounded-2xl bg-error/10 text-error flex items-center justify-center mx-auto border border-error/20">
+                    <ShieldAlert className="w-8 h-8" />
+                </div>
+                <h2 className="text-2xl font-black text-foreground">Self-Editing Restricted</h2>
+                <p className="text-sm text-foreground-secondary leading-relaxed">
+                    You cannot edit your own profile from the Administrator portal. If any of your details need modification, please contact another administrator.
+                </p>
+                <div className="pt-3 flex items-center justify-center gap-3">
+                    <Button onClick={() => navigate(`/users/${id}`)} variant="default">
+                        View My Profile
+                    </Button>
+                    <Button onClick={() => navigate('/users')} variant="secondaryOutline">
+                        Return to Directory
+                    </Button>
+                </div>
             </div>
         );
     }

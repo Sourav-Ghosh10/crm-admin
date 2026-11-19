@@ -91,6 +91,7 @@ interface RawUser {
   };
   isActive: boolean;
   isHolidayApplicable?: boolean;
+  allowedLocations?: string[];
   lastLogin?: string;
 }
 
@@ -159,6 +160,7 @@ const mapUser = (raw: RawUser): User => {
     totalLeaveBalance: (raw as any).totalLeaveBalance ?? 0,
     lastLogin: raw.lastLogin,
     allowedIPs: [],
+    allowedLocations: raw.allowedLocations || [],
     failedLoginAttempts: 0
   };
 };
@@ -224,6 +226,29 @@ export const authService = {
       console.error("Google login error:", error);
       throw error;
     }
+  },
+
+  loginWithSSO: async (ssoToken: string): Promise<AuthResponse> => {
+    const response = await api.post<RawAuthResponse>("/auth/sso-login", {
+      ssoToken,
+    });
+
+    if (response.data.success) {
+      tokenStorage.setTokens(
+        response.data.data.accessToken,
+        response.data.data.refreshToken,
+      );
+      return {
+        success: true,
+        data: {
+          user: mapUser(response.data.data.user),
+          accessToken: response.data.data.accessToken,
+          refreshToken: response.data.data.refreshToken,
+        },
+      };
+    }
+
+    throw new Error(response.data.message || "SSO login failed");
   },
 
   logout: async (): Promise<void> => {

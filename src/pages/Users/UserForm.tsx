@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useWatch } from "react-hook-form";
 import type { Control, UseFormSetValue, Resolver } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
@@ -20,6 +20,7 @@ import {
   Plus,
   KeyRound,
   Lock,
+  Building2,
 } from "lucide-react";
 import type { User, EmploymentType } from "../../types/user.types";
 import type { OfficeLocation, Department, Designation, LeaveType } from "../../types/organization.types";
@@ -137,10 +138,12 @@ const baseSchema = yup.object({
     )
   ),
   allowedIPs: yup.array().of(yup.string().defined()).defined().default([]),
+  allowedLocations: yup.array().of(yup.string().defined()).default([]),
 });
 
 type UserFormValues = {
   isAdmin: boolean;
+  allowedLocations?: string[];
   isHolidayApplicable: boolean;
   isPaidLeaveApplicable: boolean;
   totalLeaveBalance: number;
@@ -1052,46 +1055,159 @@ const EmploymentCard: React.FC<CardProps & {
   );
 };
 
-const PermissionsCard: React.FC<CardProps> = ({ control }) => (
-  <Card variant="bordered" className="overflow-hidden border-error/10 shadow-lg shadow-error/5 rounded-2xl sm:rounded-3xl">
-    <CardHeader className="bg-error/5 border-b border-error/10 p-2 sm:p-3">
-      <CardTitle className="flex items-center gap-2 text-error text-sm sm:base">
-        <Shield className="w-4 h-4" />
-        System Privileges
-      </CardTitle>
-    </CardHeader>
-    <CardContent className="p-3 sm:p-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {[
-        { name: "isAdmin", label: "Administrator Status", color: "text-amber-600", borderColor: "border-amber-500/20" },
-      ].map((perm) => (
-        <Controller
-          key={perm.name}
-          name={perm.name as never}
-          control={control}
-          render={({ field }) => (
-            <label className={cn(
-              "flex items-center p-2 rounded-xl bg-muted/30 border border-border/50 hover:bg-muted transition-colors cursor-pointer group",
-              perm.borderColor
-            )}>
-              <input
-                type="checkbox"
-                checked={field.value}
-                onChange={(e) => field.onChange(e.target.checked)}
-                className="w-4 h-4 rounded-md border-2 border-border text-primary focus:ring-primary/20 transition-all"
-              />
-              <span className={cn(
-                "ml-2 text-[11px] sm:text-xs font-bold transition-colors uppercase tracking-tight",
-                perm.color || "text-foreground group-hover:text-primary"
+interface PermissionsCardProps extends CardProps {
+  locations?: OfficeLocation[];
+  setValue?: UseFormSetValue<UserFormValues>;
+}
+
+const PermissionsCard: React.FC<PermissionsCardProps> = ({ control, locations = [], setValue }) => {
+  const isAdmin = useWatch({ control, name: "isAdmin" });
+  const currentWorkLocation = useWatch({ control, name: "employment.location" }) || "";
+  const allowedLocations = useWatch({ control, name: "allowedLocations" }) || [];
+
+  return (
+    <Card variant="bordered" className="overflow-hidden border-error/10 shadow-lg shadow-error/5 rounded-2xl sm:rounded-3xl">
+      <CardHeader className="bg-error/5 border-b border-error/10 p-2 sm:p-3">
+        <CardTitle className="flex items-center gap-2 text-error text-sm sm:base">
+          <Shield className="w-4 h-4" />
+          System Privileges
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 sm:p-4 space-y-4">
+        <div>
+          <Controller
+            name="isAdmin"
+            control={control}
+            render={({ field }) => (
+              <label className={cn(
+                "flex items-center p-2.5 rounded-xl bg-muted/30 border hover:bg-muted transition-colors cursor-pointer group",
+                field.value ? "border-amber-500/40 bg-amber-500/5" : "border-border/50"
               )}>
-                {perm.label}
+                <input
+                  type="checkbox"
+                  checked={field.value}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    field.onChange(checked);
+                    if (checked) {
+                      // By default, pre-select user's assigned work location
+                      if (!allowedLocations || allowedLocations.length === 0) {
+                        if (currentWorkLocation) {
+                          setValue?.("allowedLocations", [currentWorkLocation]);
+                        }
+                      }
+                    }
+                  }}
+                  className="w-4 h-4 rounded-md border-2 border-border text-primary focus:ring-primary/20 transition-all"
+                />
+                <span className="ml-2.5 text-xs font-black transition-colors uppercase tracking-tight text-amber-600">
+                  Administrator Status
+                </span>
+              </label>
+            )}
+          />
+        </div>
+
+        {/* Office Location Access - displayed when Administrator Status is enabled */}
+        {isAdmin && (
+          <div className="pt-3 border-t border-border/60 space-y-3 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-foreground font-black text-xs uppercase tracking-wider">
+                <Building2 className="w-3.5 h-3.5 text-primary" />
+                <span>Office Location Access</span>
+              </div>
+              <span className="text-[10px] font-bold text-foreground-tertiary">
+                {allowedLocations.includes("all")
+                  ? "All Offices Selected"
+                  : `${allowedLocations.length} Selected`}
               </span>
-            </label>
-          )}
-        />
-      ))}
-    </CardContent>
-  </Card>
-);
+            </div>
+
+            <p className="text-[11px] text-foreground-secondary leading-relaxed">
+              Select which office location(s) this admin can access. By default, their assigned work location is selected.
+            </p>
+
+            <div className="space-y-2">
+              {/* All Offices Option */}
+              <label className={cn(
+                "flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer text-xs",
+                allowedLocations.includes("all")
+                  ? "bg-primary/10 border-primary text-primary font-bold shadow-sm"
+                  : "bg-muted/20 border-border/50 hover:bg-muted/50 text-foreground"
+              )}>
+                <div className="flex items-center gap-2.5">
+                  <input
+                    type="checkbox"
+                    checked={allowedLocations.includes("all")}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setValue?.("allowedLocations", ["all"]);
+                      } else {
+                        setValue?.("allowedLocations", currentWorkLocation ? [currentWorkLocation] : []);
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                  />
+                  <div>
+                    <span className="font-black">All Offices (Unrestricted Access)</span>
+                    <p className="text-[10px] text-foreground-tertiary font-normal">Can view and manage employees across all branches</p>
+                  </div>
+                </div>
+              </label>
+
+              {/* Individual Active Offices */}
+              <div className="space-y-1.5 pt-1">
+                {locations.filter(l => l.isActive).map((loc) => {
+                  const isSelected = allowedLocations.includes("all") || allowedLocations.includes(loc.name);
+                  const isAssignedWorkLoc = Boolean(currentWorkLocation && currentWorkLocation.toLowerCase() === loc.name.toLowerCase());
+
+                  return (
+                    <label
+                      key={loc.id || loc._id || loc.name}
+                      className={cn(
+                        "flex items-center justify-between p-2 rounded-xl border transition-all cursor-pointer text-xs",
+                        isSelected
+                          ? "bg-primary/5 border-primary/40 text-foreground"
+                          : "bg-muted/10 border-border/40 hover:bg-muted/40 text-foreground-secondary",
+                        allowedLocations.includes("all") && "opacity-75 cursor-not-allowed"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          disabled={allowedLocations.includes("all")}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            let updated: string[];
+                            if (checked) {
+                              updated = [...allowedLocations.filter(x => x !== "all"), loc.name];
+                            } else {
+                              updated = allowedLocations.filter(x => x !== loc.name && x !== "all");
+                            }
+                            setValue?.("allowedLocations", updated);
+                          }}
+                          className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20"
+                        />
+                        <span className="font-bold truncate">{loc.name}</span>
+                      </div>
+
+                      {isAssignedWorkLoc && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider bg-primary/10 text-primary border border-primary/20">
+                          Assigned Office
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 const SecurityIPCard: React.FC<CardProps & { ipInput: string; setIpInput: (v: string) => void }> = ({
   control,
@@ -1446,6 +1562,15 @@ const UserForm: React.FC<UserFormProps> = ({
       },
       leaveBalance: getCalculatedLeaveBalance(leaveTypes || [], initialValues?.leaveBalance || {}),
       allowedIPs: initialValues?.allowedIPs || [],
+      allowedLocations: (() => {
+        if (Array.isArray(initialValues?.allowedLocations) && initialValues.allowedLocations.length > 0) {
+          return initialValues.allowedLocations;
+        }
+        if (initialValues?.employment?.location) {
+          return [initialValues.employment.location];
+        }
+        return [];
+      })(),
     },
   });
 
@@ -1592,6 +1717,11 @@ const UserForm: React.FC<UserFormProps> = ({
       permissions: data.permissions,
       leaveBalance: data.leaveBalance,
       allowedIPs: data.allowedIPs,
+      allowedLocations: data.isAdmin
+        ? (Array.isArray(data.allowedLocations) && data.allowedLocations.length > 0
+            ? data.allowedLocations
+            : (data.employment?.location ? [data.employment.location] : []))
+        : [],
       isActive: data.isActive
     };
 
@@ -1614,6 +1744,7 @@ const UserForm: React.FC<UserFormProps> = ({
       
       formattedData.leaveBalance = {};
       formattedData.allowedIPs = [];
+      formattedData.allowedLocations = [];
       formattedData.isAdmin = false;
       formattedData.isHolidayApplicable = false;
       formattedData.isPaidLeaveApplicable = false;
@@ -1750,7 +1881,7 @@ const UserForm: React.FC<UserFormProps> = ({
         {currentStep === 3 && !isClient && (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
             <div className="space-y-6">
-              <PermissionsCard control={control} />
+              <PermissionsCard control={control} locations={locations} setValue={setValue} />
             </div>
             <div className="space-y-6">
               <SecurityIPCard control={control} ipInput={ipInput} setIpInput={setIpInput} />

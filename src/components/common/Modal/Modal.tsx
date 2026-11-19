@@ -41,12 +41,13 @@ interface ModalProps {
   maxWidth?: "xs" | "sm" | "md" | "lg" | "xl";
   preventCloseOnClickOutside?: boolean;
   hideHeader?: boolean;
+  className?: string;
 }
 
 const maxWidthClasses = {
   xs: "max-w-xs",
   sm: "max-w-sm",
-  md: "max-w-md",
+  md: "max-w-xl",
   lg: "max-w-[95vw] sm:max-w-3xl md:max-w-4xl lg:max-w-5xl xl:max-w-6xl",
   xl: "max-w-[95vw] sm:max-w-4xl md:max-w-5xl lg:max-w-6xl xl:max-w-7xl",
 };
@@ -61,6 +62,7 @@ const Modal: React.FC<ModalProps> = ({
   maxWidth = "sm",
   preventCloseOnClickOutside = true,
   hideHeader = false,
+  className,
 }) => {
   const [footerElement, setFooterElement] = useState<HTMLDivElement | null>(null);
 
@@ -92,6 +94,7 @@ const Modal: React.FC<ModalProps> = ({
           className={cn(
             "relative bg-surface rounded-[2.5rem] shadow-2xl w-full mx-auto border border-white/20 animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 z-10 overflow-hidden flex flex-col",
             maxWidthClasses[maxWidth],
+            className,
           )}
           role="dialog"
           aria-modal="true"

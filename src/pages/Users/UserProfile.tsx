@@ -28,6 +28,7 @@ import { userService } from "../../services/userService";
 import type { EmployeePresence } from "../../services/userService";
 import { usePermissions } from "../../hooks/usePermissions";
 import { PERMISSIONS } from "../../config/permissions";
+import { useAppSelector } from "../../store/hooks";
 
 // ─── Presence helpers ───────────────────────────────────────────────
 const ONLINE_THRESHOLD_MS = 3 * 60 * 1000; // 3 minutes
@@ -63,6 +64,14 @@ const UserProfile: React.FC = () => {
   // Permissions
   const { hasPermission: canEdit } = usePermissions(PERMISSIONS.EMPLOYEE_EDIT);
   const { hasPermission: canViewHistory } = usePermissions(PERMISSIONS.VIEW_USER_LOCATION_HISTORY);
+
+  const authUser = useAppSelector((state) => state.auth.user);
+  const isSelf = Boolean(
+    authUser && user && (
+      String(authUser._id || authUser.id) === String(user._id || user.id) ||
+      (authUser.employeeId && authUser.employeeId === user.employeeId)
+    )
+  );
 
   // Fetch presence data for this user
   const fetchPresence = useCallback(async () => {
@@ -187,7 +196,7 @@ const UserProfile: React.FC = () => {
                   className="absolute top-full right-0 mt-2 w-48 bg-surface border border-border rounded-xl shadow-2xl z-30 overflow-hidden animate-in fade-in zoom-in-95 duration-200"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {canEdit && (
+                  {canEdit && !isSelf && (
                     <Button
                       variant="ghost"
                       onClick={() => navigate(`/users/edit/${user._id}`)}
@@ -264,8 +273,17 @@ const UserProfile: React.FC = () => {
                 </div>
                 <div className="flex gap-2 sm:gap-3 items-center">
                   {user.isAdmin && (
-                    <span className="px-3 py-1.5 rounded-xl bg-amber-500 text-white text-[9px] font-black tracking-widest shadow-lg shadow-amber-500/20">
-                      ADMIN
+                    <span className="px-3 py-1.5 rounded-xl bg-amber-500 text-white text-[9px] font-black tracking-widest shadow-lg shadow-amber-500/20 flex items-center gap-1.5">
+                      <span>ADMIN</span>
+                      {user.allowedLocations && user.allowedLocations.length > 0 && !user.allowedLocations.includes('all') ? (
+                        <span className="bg-black/20 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                          {user.allowedLocations.join(', ')}
+                        </span>
+                      ) : (
+                        <span className="bg-black/20 px-1.5 py-0.5 rounded text-[8px] font-bold">
+                          ALL OFFICES
+                        </span>
+                      )}
                     </span>
                   )}
                   {user.googleId && (

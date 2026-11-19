@@ -4,9 +4,9 @@ import type { Resolver } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { Eye, EyeOff, AlertCircle, Mail, Lock, Loader2 } from "lucide-react";
-import { useNavigate, useLocation, Link } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams, Link } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../store/hooks";
-import { login, loginWithGoogle, clearError } from "../../store/slices/authSlice";
+import { login, loginWithGoogle, loginWithSSO, clearError } from "../../store/slices/authSlice";
 import { tokenStorage } from "../../services/api";
 import { cn } from "../../lib/utils";
 // import logoAnimated from "../../assets/pulse-ops-logo-animated.mp4";
@@ -32,10 +32,17 @@ type LoginFormData = yup.InferType<typeof loginSchema>;
 const Login: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const ssoToken = searchParams.get("ssoToken");
+  const redirectParam = searchParams.get("redirect") || "/leave";
+
   const dispatch = useAppDispatch();
   const { isLoading, error, isAuthenticated, user } = useAppSelector(
     (state) => state.auth,
   );
+  const [ssoProcessing, setSsoProcessing] = useState(Boolean(ssoToken));
+  const [ssoError, setSsoError] = useState<string | null>(null);
+
   const [showPassword, setShowPassword] = useState(false);
   const hasStoredTokens = !!(
     tokenStorage.getAccessToken() && tokenStorage.getRefreshToken()
@@ -50,6 +57,33 @@ const Login: React.FC = () => {
     sessionStorage.removeItem("logoutReason");
     sessionStorage.removeItem("logoutMessage");
   }, []);
+
+  // Handle SSO token login if provided in query params
+  useEffect(() => {
+    if (!ssoToken) return;
+
+    let isMounted = true;
+    setSsoProcessing(true);
+    setSsoError(null);
+
+    dispatch(loginWithSSO(ssoToken))
+      .unwrap()
+      .then(() => {
+        if (isMounted) {
+          navigate(redirectParam, { replace: true });
+        }
+      })
+      .catch((err: unknown) => {
+        if (isMounted) {
+          setSsoProcessing(false);
+          setSsoError(typeof err === "string" ? err : "SSO auto-login failed. Please sign in manually.");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [ssoToken, dispatch, navigate, redirectParam]);
 
   const {
     control,
@@ -70,6 +104,9 @@ const Login: React.FC = () => {
   /* Removed useGoogleLogin hook */
 
   useEffect(() => {
+    // If SSO token is present/being processed, let the SSO effect handle navigation
+    if (ssoToken) return;
+
     if (isAuthenticated || hasStoredTokens) {
       const fromPath =
         (location.state as { from?: { pathname?: string } })?.from?.pathname;
@@ -86,7 +123,7 @@ const Login: React.FC = () => {
 
       navigate(targetPath, { replace: true });
     }
-  }, [isAuthenticated, hasStoredTokens, navigate, location.state, user?.userType]);
+  }, [isAuthenticated, hasStoredTokens, navigate, location.state, user?.userType, ssoToken]);
 
 
 
@@ -117,6 +154,20 @@ const Login: React.FC = () => {
       checked: true,
     }));
   };
+
+  if (ssoToken && ssoProcessing) {
+    return (
+      <main id="main-content" className="min-h-screen flex items-center justify-center bg-surface p-4">
+        <div className="flex flex-col items-center max-w-sm text-center">
+          <Loader2 className="w-12 h-12 animate-spin text-primary mb-4" />
+          <h2 className="text-xl font-bold text-foreground">Logging in to Admin Portal...</h2>
+          <p className="text-sm text-foreground-secondary mt-2">
+            Verifying your session and opening the leave page.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main id="main-content" className="min-h-screen flex">
@@ -251,10 +302,10 @@ const Login: React.FC = () => {
           </div>
 
           {/* Error Alert */}
-          {error && (
+          {(ssoError || error) && (
             <div className="flex items-center gap-3 p-4 mb-6 bg-error/10 border border-error/20 rounded-xl text-error animate-in">
               <AlertCircle className="w-5 h-5 shrink-0" />
-              <p className="text-sm font-medium">{error}</p>
+              <p className="text-sm font-medium">{ssoError || error}</p>
             </div>
           )}
 

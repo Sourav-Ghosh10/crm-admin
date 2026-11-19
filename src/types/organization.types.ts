@@ -17,6 +17,12 @@ export interface OfficeLocation {
     isActive: boolean;
     deletedAt?: string | null;
     timezone: string;
+    coordinates?: {
+        latitude?: number | null;
+        longitude?: number | null;
+    };
+    radius?: number | null;
+    geofencingEnabled?: boolean;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -78,6 +84,12 @@ export interface OfficeLocationInput {
     isHeadquarters: boolean;
     isActive: boolean;
     timezone: string;
+    coordinates?: {
+        latitude?: number | null;
+        longitude?: number | null;
+    };
+    radius?: number | null;
+    geofencingEnabled?: boolean;
 }
 
 export interface Holiday {
