@@ -10,6 +10,7 @@ import {
     RefreshCw,
     Clock,
     Navigation,
+    Wifi,
 } from "lucide-react";
 import { cn } from "../../../lib/utils";
 import Button from "../../../components/common/Button";
@@ -133,6 +134,12 @@ const LocationsList: React.FC = () => {
             timezone: "Asia/Kolkata",
             radius: 100,
             geofencingEnabled: true,
+            geofencingMobile: true,
+            geofencingDesktop: true,
+            ipRestrictionEnabled: false,
+            allowedIps: [],
+            ipRestrictionMobile: true,
+            ipRestrictionDesktop: true,
             coordinates: {
                 latitude: null as any,
                 longitude: null as any,
@@ -232,22 +239,34 @@ const LocationsList: React.FC = () => {
         },
         {
             _id: "geofence",
-            label: "Geofence",
+            label: "Attendance Rules",
             format: (_: unknown, row: OfficeLocation) => (
-                <div className="space-y-1">
+                <div className="space-y-1.5 py-1">
+                    {/* Geofence Rule */}
                     {row.geofencingEnabled && row.coordinates?.latitude && row.coordinates?.longitude ? (
-                        <div>
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                                <Navigation className="w-3 h-3 text-emerald-500" />
-                                {row.radius || 100}m Radius
+                        <div className="flex flex-col gap-0.5">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 w-fit">
+                                <Navigation className="w-2.5 h-2.5 text-emerald-500" />
+                                {row.radius || 100}m ({[row.geofencingMobile !== false && "Mobile", row.geofencingDesktop !== false && "Desktop"].filter(Boolean).join(", ")})
                             </span>
-                            <div className="text-[10px] text-foreground-tertiary mt-1 font-mono tracking-tight">
-                                {row.coordinates.latitude.toFixed(4)}, {row.coordinates.longitude.toFixed(4)}
-                            </div>
                         </div>
                     ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-semibold text-foreground-tertiary bg-muted/50 border border-border/40">
-                            Disabled
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-foreground-tertiary bg-muted/30">
+                            GPS: Off
+                        </span>
+                    )}
+
+                    {/* IP Whitelist Rule */}
+                    {row.ipRestrictionEnabled && Array.isArray(row.allowedIps) && row.allowedIps.length > 0 ? (
+                        <div className="flex flex-col gap-0.5">
+                            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-blue-500/10 text-blue-600 border border-blue-500/20 w-fit">
+                                <Wifi className="w-2.5 h-2.5 text-blue-500" />
+                                {row.allowedIps.length} IP{row.allowedIps.length > 1 ? "s" : ""} ({[row.ipRestrictionMobile !== false && "Mobile", row.ipRestrictionDesktop !== false && "Desktop"].filter(Boolean).join(", ")})
+                            </span>
+                        </div>
+                    ) : (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-foreground-tertiary bg-muted/30">
+                            IP: Off
                         </span>
                     )}
                 </div>

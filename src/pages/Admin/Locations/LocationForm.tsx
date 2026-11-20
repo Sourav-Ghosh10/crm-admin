@@ -2,7 +2,21 @@ import React, { useState } from "react";
 import { useForm, Controller, type Resolver } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { Building2, MapPin, Phone, Mail, Globe, Hash, Clock, Navigation, LocateFixed, ShieldCheck } from "lucide-react";
+import {
+    Building2,
+    MapPin,
+    Phone,
+    Mail,
+    Globe,
+    Hash,
+    Clock,
+    Navigation,
+    LocateFixed,
+    ShieldCheck,
+    Wifi,
+    Smartphone,
+    Monitor,
+} from "lucide-react";
 import Input from "../../../components/common/Input";
 import Button from "../../../components/common/Button";
 import type { OfficeLocation } from "../../../types/organization.types";
@@ -49,6 +63,12 @@ const schema = yup.object({
         .max(50000, "Maximum radius is 50,000 meters")
         .default(100),
     geofencingEnabled: yup.boolean().default(true),
+    geofencingMobile: yup.boolean().default(true),
+    geofencingDesktop: yup.boolean().default(true),
+    ipRestrictionEnabled: yup.boolean().default(false),
+    allowedIps: yup.string().optional().default(""),
+    ipRestrictionMobile: yup.boolean().default(true),
+    ipRestrictionDesktop: yup.boolean().default(true),
 });
 
 type LocationFormData = yup.InferType<typeof schema>;
@@ -58,7 +78,7 @@ import { ModalFooter } from "../../../components/common/Modal/Modal";
 
 interface LocationFormProps {
     initialValues?: Partial<OfficeLocation>;
-    onSubmit: (data: LocationFormData) => void;
+    onSubmit: (data: any) => void;
     onCancel: () => void;
     isLoading?: boolean;
     error?: string | string[] | null;
@@ -72,8 +92,9 @@ const LocationForm: React.FC<LocationFormProps> = ({
     error,
 }) => {
     const [isLocating, setIsLocating] = useState(false);
+    const [isFetchingIp, setIsFetchingIp] = useState(false);
 
-    const { control, handleSubmit, setValue, formState: { errors } } = useForm<LocationFormData>({
+    const { control, handleSubmit, setValue, watch, formState: { errors } } = useForm<LocationFormData>({
         mode: "onChange",
         resolver: yupResolver(schema) as Resolver<LocationFormData>,
         defaultValues: {
@@ -98,8 +119,63 @@ const LocationForm: React.FC<LocationFormProps> = ({
             },
             radius: initialValues?.radius ?? 100,
             geofencingEnabled: initialValues?.geofencingEnabled ?? true,
+            geofencingMobile: initialValues?.geofencingMobile ?? true,
+            geofencingDesktop: initialValues?.geofencingDesktop ?? true,
+            ipRestrictionEnabled: initialValues?.ipRestrictionEnabled ?? false,
+            allowedIps: Array.isArray(initialValues?.allowedIps)
+                ? initialValues.allowedIps.join(", ")
+                : (initialValues?.allowedIps || ""),
+            ipRestrictionMobile: initialValues?.ipRestrictionMobile ?? true,
+            ipRestrictionDesktop: initialValues?.ipRestrictionDesktop ?? true,
         },
     });
+
+    const isGeofenceOn = watch("geofencingEnabled");
+    const isIpOn = watch("ipRestrictionEnabled");
+
+    const handleFormSubmit = (data: LocationFormData) => {
+        const allowedIpsArray = typeof data.allowedIps === "string"
+            ? data.allowedIps.split(",").map((s) => s.trim()).filter(Boolean)
+            : data.allowedIps || [];
+
+        onSubmit({
+            ...data,
+            allowedIps: allowedIpsArray,
+        });
+    };
+
+    const handleGetCurrentIp = async () => {
+        setIsFetchingIp(true);
+        try {
+            const res = await fetch("https://api.ipify.org?format=json");
+            const data = await res.json();
+            if (data && data.ip) {
+                const currentVal = control._formValues.allowedIps || "";
+                const currentIps = currentVal.split(",").map((s: string) => s.trim()).filter(Boolean);
+                if (!currentIps.includes(data.ip)) {
+                    currentIps.push(data.ip);
+                }
+                setValue("allowedIps", currentIps.join(", "), { shouldValidate: true, shouldDirty: true });
+            }
+        } catch {
+            try {
+                const res2 = await fetch("https://ipwho.is/");
+                const data2 = await res2.json();
+                if (data2 && data2.ip) {
+                    const currentVal = control._formValues.allowedIps || "";
+                    const currentIps = currentVal.split(",").map((s: string) => s.trim()).filter(Boolean);
+                    if (!currentIps.includes(data2.ip)) {
+                        currentIps.push(data2.ip);
+                    }
+                    setValue("allowedIps", currentIps.join(", "), { shouldValidate: true, shouldDirty: true });
+                }
+            } catch {
+                alert("Could not detect public IP. Please type it in manually.");
+            }
+        } finally {
+            setIsFetchingIp(false);
+        }
+    };
 
     const handleGetCurrentLocation = () => {
         setIsLocating(true);
@@ -155,7 +231,7 @@ const LocationForm: React.FC<LocationFormProps> = ({
     };
 
     return (
-        <form id="location-form" onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+        <form id="location-form" onSubmit={handleSubmit(handleFormSubmit)} className="space-y-5">
             <FormError message={error} />
             <div className="grid grid-cols-1 md:grid-cols-6 gap-x-6 gap-y-1">
                 <div className="md:col-span-4">
@@ -389,7 +465,10 @@ const LocationForm: React.FC<LocationFormProps> = ({
                             control={control}
                             render={({ field }) => (
                                 <label className="inline-flex items-center cursor-pointer group select-none">
-                                    <div className="relative">
+                                    <div className={cn(
+                                        "w-11 h-6 rounded-full transition-colors relative border shrink-0",
+                                        field.value ? "bg-emerald-500 border-emerald-600" : "bg-muted border-border"
+                                    )}>
                                         <input
                                             type="checkbox"
                                             className="sr-only"
@@ -397,16 +476,12 @@ const LocationForm: React.FC<LocationFormProps> = ({
                                             onChange={field.onChange}
                                         />
                                         <div className={cn(
-                                            "w-10 h-5 bg-muted rounded-full transition-colors border border-border",
-                                            field.value && "bg-emerald-500/20 border-emerald-500/40"
-                                        )} />
-                                        <div className={cn(
-                                            "absolute left-1 top-1 w-3 h-3 bg-foreground-tertiary rounded-full transition-all",
-                                            field.value && "translate-x-5 bg-emerald-600"
+                                            "w-4 h-4 rounded-full bg-white absolute top-[3px] transition-all shadow-sm",
+                                            field.value ? "translate-x-5.5" : "translate-x-1"
                                         )} />
                                     </div>
                                     <span className={cn(
-                                        "ml-2.5 text-xs font-bold transition-colors",
+                                        "ml-3 text-xs font-bold transition-colors",
                                         field.value ? "text-emerald-600" : "text-foreground-tertiary"
                                     )}>
                                         {field.value ? "Geofence Enabled" : "Geofence Disabled"}
@@ -416,7 +491,120 @@ const LocationForm: React.FC<LocationFormProps> = ({
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-3 bg-muted/20 p-4 rounded-2xl border border-border/50">
+                    <div className={cn(
+                        "grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-3 bg-muted/20 p-4 rounded-2xl border border-border/50 transition-opacity duration-200",
+                        !isGeofenceOn && "opacity-45 pointer-events-none"
+                    )}>
+                        {/* Device applicability for Geofencing */}
+                        <div className="md:col-span-6">
+                            <div className="text-[11px] font-bold text-foreground-secondary uppercase tracking-wider mb-2">
+                                Apply Geofence On:
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <Controller
+                                    name="geofencingMobile"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <button
+                                            type="button"
+                                            onClick={() => field.onChange(!field.value)}
+                                            className={cn(
+                                                "relative flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all select-none text-left w-full group",
+                                                field.value
+                                                    ? "bg-primary/5 border-primary/40 shadow-sm"
+                                                    : "bg-muted/30 border-border/70 hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                                                    field.value ? "bg-primary text-white shadow-sm shadow-primary/25" : "bg-muted text-foreground-tertiary"
+                                                )}>
+                                                    <Smartphone className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                                                        Mobile Devices
+                                                    </div>
+                                                    <div className="text-[10px] text-foreground-tertiary">
+                                                        Phones & Tablets
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn(
+                                                    "text-[10px] font-black uppercase tracking-wider",
+                                                    field.value ? "text-primary" : "text-foreground-tertiary"
+                                                )}>
+                                                    {field.value ? "Active" : "Off"}
+                                                </span>
+                                                <div className={cn(
+                                                    "w-8 h-4.5 rounded-full transition-colors relative border shrink-0",
+                                                    field.value ? "bg-primary border-primary" : "bg-muted border-border"
+                                                )}>
+                                                    <div className={cn(
+                                                        "w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all shadow-sm",
+                                                        field.value ? "translate-x-3.5" : "translate-x-0.5"
+                                                    )} />
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
+                                />
+
+                                <Controller
+                                    name="geofencingDesktop"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <button
+                                            type="button"
+                                            onClick={() => field.onChange(!field.value)}
+                                            className={cn(
+                                                "relative flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all select-none text-left w-full group",
+                                                field.value
+                                                    ? "bg-primary/5 border-primary/40 shadow-sm"
+                                                    : "bg-muted/30 border-border/70 hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                                                    field.value ? "bg-primary text-white shadow-sm shadow-primary/25" : "bg-muted text-foreground-tertiary"
+                                                )}>
+                                                    <Monitor className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                                                        Desktop / Laptops
+                                                    </div>
+                                                    <div className="text-[10px] text-foreground-tertiary">
+                                                        PCs & Workstations
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn(
+                                                    "text-[10px] font-black uppercase tracking-wider",
+                                                    field.value ? "text-primary" : "text-foreground-tertiary"
+                                                )}>
+                                                    {field.value ? "Active" : "Off"}
+                                                </span>
+                                                <div className={cn(
+                                                    "w-8 h-4.5 rounded-full transition-colors relative border shrink-0",
+                                                    field.value ? "bg-primary border-primary" : "bg-muted border-border"
+                                                )}>
+                                                    <div className={cn(
+                                                        "w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all shadow-sm",
+                                                        field.value ? "translate-x-3.5" : "translate-x-0.5"
+                                                    )} />
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
+                                />
+                            </div>
+                        </div>
+
                         <div className="md:col-span-2">
                             <Controller
                                 name="coordinates.latitude"
@@ -489,6 +677,200 @@ const LocationForm: React.FC<LocationFormProps> = ({
                             >
                                 <LocateFixed className={cn("w-3.5 h-3.5 text-primary", isLocating && "animate-spin")} />
                                 {isLocating ? "Detecting GPS..." : "Use Current Location"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Office Wi-Fi / IP Whitelisting Section */}
+                <div className="md:col-span-6 mt-4 pt-5 border-t border-border/60">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <Wifi className="w-4 h-4 text-primary" />
+                                <h4 className="text-sm font-bold text-foreground">Office Wi-Fi / IP Whitelisting</h4>
+                            </div>
+                            <p className="text-xs text-foreground-tertiary mt-0.5">
+                                Restrict employee clock-in and clock-out to registered office Wi-Fi / public network IP addresses.
+                            </p>
+                        </div>
+                        <Controller
+                            name="ipRestrictionEnabled"
+                            control={control}
+                            render={({ field }) => (
+                                <label className="inline-flex items-center cursor-pointer group select-none">
+                                    <div className={cn(
+                                        "w-11 h-6 rounded-full transition-colors relative border shrink-0",
+                                        field.value ? "bg-emerald-500 border-emerald-600" : "bg-muted border-border"
+                                    )}>
+                                        <input
+                                            type="checkbox"
+                                            className="sr-only"
+                                            checked={field.value}
+                                            onChange={field.onChange}
+                                        />
+                                        <div className={cn(
+                                            "w-4 h-4 rounded-full bg-white absolute top-[3px] transition-all shadow-sm",
+                                            field.value ? "translate-x-5.5" : "translate-x-1"
+                                        )} />
+                                    </div>
+                                    <span className={cn(
+                                        "ml-3 text-xs font-bold transition-colors",
+                                        field.value ? "text-emerald-600" : "text-foreground-tertiary"
+                                    )}>
+                                        {field.value ? "IP Restriction Active" : "IP Restriction Disabled"}
+                                    </span>
+                                </label>
+                            )}
+                        />
+                    </div>
+
+                    <div className={cn(
+                        "grid grid-cols-1 md:grid-cols-6 gap-x-4 gap-y-3 bg-muted/20 p-4 rounded-2xl border border-border/50 transition-opacity duration-200",
+                        !isIpOn && "opacity-45 pointer-events-none"
+                    )}>
+                        {/* Device applicability for IP Restriction */}
+                        <div className="md:col-span-6">
+                            <div className="text-[11px] font-bold text-foreground-secondary uppercase tracking-wider mb-2">
+                                Apply IP Restriction On:
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <Controller
+                                    name="ipRestrictionMobile"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <button
+                                            type="button"
+                                            onClick={() => field.onChange(!field.value)}
+                                            className={cn(
+                                                "relative flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all select-none text-left w-full group",
+                                                field.value
+                                                    ? "bg-primary/5 border-primary/40 shadow-sm"
+                                                    : "bg-muted/30 border-border/70 hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                                                    field.value ? "bg-primary text-white shadow-sm shadow-primary/25" : "bg-muted text-foreground-tertiary"
+                                                )}>
+                                                    <Smartphone className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                                                        Mobile Devices
+                                                    </div>
+                                                    <div className="text-[10px] text-foreground-tertiary">
+                                                        Phones & Tablets
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn(
+                                                    "text-[10px] font-black uppercase tracking-wider",
+                                                    field.value ? "text-primary" : "text-foreground-tertiary"
+                                                )}>
+                                                    {field.value ? "Active" : "Off"}
+                                                </span>
+                                                <div className={cn(
+                                                    "w-8 h-4.5 rounded-full transition-colors relative border shrink-0",
+                                                    field.value ? "bg-primary border-primary" : "bg-muted border-border"
+                                                )}>
+                                                    <div className={cn(
+                                                        "w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all shadow-sm",
+                                                        field.value ? "translate-x-3.5" : "translate-x-0.5"
+                                                    )} />
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
+                                />
+
+                                <Controller
+                                    name="ipRestrictionDesktop"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <button
+                                            type="button"
+                                            onClick={() => field.onChange(!field.value)}
+                                            className={cn(
+                                                "relative flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all select-none text-left w-full group",
+                                                field.value
+                                                    ? "bg-primary/5 border-primary/40 shadow-sm"
+                                                    : "bg-muted/30 border-border/70 hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={cn(
+                                                    "w-9 h-9 rounded-xl flex items-center justify-center transition-colors",
+                                                    field.value ? "bg-primary text-white shadow-sm shadow-primary/25" : "bg-muted text-foreground-tertiary"
+                                                )}>
+                                                    <Monitor className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-bold text-foreground group-hover:text-primary transition-colors">
+                                                        Desktop / Laptops
+                                                    </div>
+                                                    <div className="text-[10px] text-foreground-tertiary">
+                                                        PCs & Workstations
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className={cn(
+                                                    "text-[10px] font-black uppercase tracking-wider",
+                                                    field.value ? "text-primary" : "text-foreground-tertiary"
+                                                )}>
+                                                    {field.value ? "Active" : "Off"}
+                                                </span>
+                                                <div className={cn(
+                                                    "w-8 h-4.5 rounded-full transition-colors relative border shrink-0",
+                                                    field.value ? "bg-primary border-primary" : "bg-muted border-border"
+                                                )}>
+                                                    <div className={cn(
+                                                        "w-3.5 h-3.5 rounded-full bg-white absolute top-[1px] transition-all shadow-sm",
+                                                        field.value ? "translate-x-3.5" : "translate-x-0.5"
+                                                    )} />
+                                                </div>
+                                            </div>
+                                        </button>
+                                    )}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-6">
+                            <Controller
+                                name="allowedIps"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        {...field}
+                                        value={field.value ?? ""}
+                                        label="Authorized Office Public IP Addresses"
+                                        placeholder="e.g. 103.21.244.2, 192.168.1.1 (comma-separated)"
+                                        error={!!errors.allowedIps}
+                                        helperText={errors.allowedIps?.message || "Separate multiple public office IPs with commas (e.g. 103.21.244.2, 103.21.244.3)"}
+                                        startAdornment={<Wifi className="w-4 h-4 text-foreground-tertiary" />}
+                                    />
+                                )}
+                            />
+                        </div>
+
+                        <div className="md:col-span-6 flex flex-wrap items-center justify-between gap-2 pt-1 text-xs">
+                            <span className="text-foreground-tertiary">
+                                💡 Tip: Click below to auto-fill your current connected public network IP.
+                            </span>
+                            <Button
+                                type="button"
+                                variant="secondaryOutline"
+                                size="sm"
+                                className="gap-1.5 h-8 text-xs font-semibold"
+                                onClick={handleGetCurrentIp}
+                                disabled={isFetchingIp}
+                            >
+                                <Wifi className={cn("w-3.5 h-3.5 text-primary", isFetchingIp && "animate-spin")} />
+                                {isFetchingIp ? "Fetching IP..." : "Use Current IP"}
                             </Button>
                         </div>
                     </div>

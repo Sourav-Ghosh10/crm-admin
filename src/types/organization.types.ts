@@ -23,6 +23,12 @@ export interface OfficeLocation {
     };
     radius?: number | null;
     geofencingEnabled?: boolean;
+    geofencingMobile?: boolean;
+    geofencingDesktop?: boolean;
+    ipRestrictionEnabled?: boolean;
+    allowedIps?: string[] | string;
+    ipRestrictionMobile?: boolean;
+    ipRestrictionDesktop?: boolean;
     createdAt?: string;
     updatedAt?: string;
 }
@@ -90,6 +96,12 @@ export interface OfficeLocationInput {
     };
     radius?: number | null;
     geofencingEnabled?: boolean;
+    geofencingMobile?: boolean;
+    geofencingDesktop?: boolean;
+    ipRestrictionEnabled?: boolean;
+    allowedIps?: string[] | string;
+    ipRestrictionMobile?: boolean;
+    ipRestrictionDesktop?: boolean;
 }
 
 export interface Holiday {
