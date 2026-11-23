@@ -14,13 +14,9 @@ import {
     format,
     startOfWeek,
     endOfWeek,
-    startOfMonth,
-    endOfMonth,
     eachDayOfInterval,
     addWeeks,
     subWeeks,
-    addMonths,
-    subMonths,
     addDays,
     subDays,
     getDay,
@@ -44,6 +40,8 @@ import TimezoneToggle from "../../components/common/TimezoneToggle";
 import { getOfficeTimezone } from "../../utils/dateUtils";
 import { resolveCheckInLocation } from "../../utils/attendanceLocationUtils";
 import ManualAttendanceModal from "./ManualAttendanceModal";
+import systemSettingsService from "../../services/systemSettingsService";
+import { getPayrollCycleInterval } from "../../utils/payrollCycleUtils";
 
 type FilterType = "weekly" | "monthly" | "custom";
 
@@ -152,20 +150,58 @@ const EmployeeAttendanceDetail: React.FC = () => {
     const [selectedRecordForManual, setSelectedRecordForManual] = useState<Attendance | null>(null);
     const [selectedDateForManual, setSelectedDateForManual] = useState<string>("");
 
-    // Filter States
+    // Payroll Cycle Settings from System Settings
+    const [cycleSettings, setCycleSettings] = useState<{ startDay: number; endDay: number }>({ startDay: 1, endDay: 31 });
+
+    // Filter States - default to monthly aligned with payroll cycle
     const [filterType, setFilterType] = useState<FilterType>(
-        (searchParams.get("type") as FilterType) || "weekly"
-    );
-    const [startDate, setStartDate] = useState<string>(
-        searchParams.get("start") || format(startOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
-    );
-    const [endDate, setEndDate] = useState<string>(
-        searchParams.get("end") || format(endOfWeek(new Date(), { weekStartsOn: 1 }), "yyyy-MM-dd")
+        (searchParams.get("type") as FilterType) || "monthly"
     );
 
-    // Pagination State
+    const initialInterval = React.useMemo(() => {
+        return getPayrollCycleInterval(new Date(), cycleSettings);
+    }, [cycleSettings]);
+
+    const [startDate, setStartDate] = useState<string>(
+        searchParams.get("start") || format(initialInterval.startDate, "yyyy-MM-dd")
+    );
+    const [endDate, setEndDate] = useState<string>(
+        searchParams.get("end") || format(initialInterval.endDate, "yyyy-MM-dd")
+    );
+
+    // Pagination State - default limit to 31 for monthly view so full month cycle is visible
     const [page, setPage] = useState(Number(searchParams.get("page")) || 1);
-    const [limit, setLimit] = useState(Number(searchParams.get("limit")) || 10);
+    const [limit, setLimit] = useState(
+        Number(searchParams.get("limit")) || (filterType === "monthly" ? 31 : 10)
+    );
+
+    // Fetch payroll cycle settings on mount
+    useEffect(() => {
+        const fetchCycle = async () => {
+            try {
+                const res = await systemSettingsService.getSettingByKey("payroll_cycle_settings").catch(() => null);
+                if (res && res.value) {
+                    const sd = Number(res.value.startDay || 1);
+                    const ed = Number(res.value.endDay || 31);
+                    const loadedSettings = { startDay: sd, endDay: ed };
+                    setCycleSettings(loadedSettings);
+
+                    // If user navigated without explicit start/end or with stale default, align with actual cycle
+                    const hasExplicitParams = searchParams.has("start") && searchParams.has("end");
+                    if (!hasExplicitParams || searchParams.get("type") !== "custom") {
+                        if (filterType === "monthly" || !searchParams.has("type")) {
+                            const interval = getPayrollCycleInterval(new Date(), loadedSettings);
+                            setStartDate(format(interval.startDate, "yyyy-MM-dd"));
+                            setEndDate(format(interval.endDate, "yyyy-MM-dd"));
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to fetch payroll cycle settings:", err);
+            }
+        };
+        fetchCycle();
+    }, []);
 
     // Sync state to URL
     useEffect(() => {
@@ -226,9 +262,12 @@ const EmployeeAttendanceDetail: React.FC = () => {
         if (type === "weekly") {
             setStartDate(format(startOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"));
             setEndDate(format(endOfWeek(now, { weekStartsOn: 1 }), "yyyy-MM-dd"));
+            setLimit(10);
         } else if (type === "monthly") {
-            setStartDate(format(startOfMonth(now), "yyyy-MM-dd"));
-            setEndDate(format(endOfMonth(now), "yyyy-MM-dd"));
+            const interval = getPayrollCycleInterval(now, cycleSettings);
+            setStartDate(format(interval.startDate, "yyyy-MM-dd"));
+            setEndDate(format(interval.endDate, "yyyy-MM-dd"));
+            setLimit(31);
         }
         setPage(1); // Reset page on filter change
     };
@@ -240,9 +279,10 @@ const EmployeeAttendanceDetail: React.FC = () => {
             setStartDate(format(startOfWeek(prevStart, { weekStartsOn: 1 }), "yyyy-MM-dd"));
             setEndDate(format(endOfWeek(prevStart, { weekStartsOn: 1 }), "yyyy-MM-dd"));
         } else if (filterType === "monthly") {
-            const prevStart = subMonths(start, 1);
-            setStartDate(format(startOfMonth(prevStart), "yyyy-MM-dd"));
-            setEndDate(format(endOfMonth(prevStart), "yyyy-MM-dd"));
+            const prevDate = subDays(start, 1);
+            const interval = getPayrollCycleInterval(prevDate, cycleSettings);
+            setStartDate(format(interval.startDate, "yyyy-MM-dd"));
+            setEndDate(format(interval.endDate, "yyyy-MM-dd"));
         }
         setPage(1);
     };
@@ -254,9 +294,11 @@ const EmployeeAttendanceDetail: React.FC = () => {
             setStartDate(format(startOfWeek(nextStart, { weekStartsOn: 1 }), "yyyy-MM-dd"));
             setEndDate(format(endOfWeek(nextStart, { weekStartsOn: 1 }), "yyyy-MM-dd"));
         } else if (filterType === "monthly") {
-            const nextStart = addMonths(start, 1);
-            setStartDate(format(startOfMonth(nextStart), "yyyy-MM-dd"));
-            setEndDate(format(endOfMonth(nextStart), "yyyy-MM-dd"));
+            const end = ymdToLocalDate(endDate);
+            const nextDate = addDays(end, 1);
+            const interval = getPayrollCycleInterval(nextDate, cycleSettings);
+            setStartDate(format(interval.startDate, "yyyy-MM-dd"));
+            setEndDate(format(interval.endDate, "yyyy-MM-dd"));
         }
         setPage(1);
     };
@@ -762,7 +804,13 @@ const EmployeeAttendanceDetail: React.FC = () => {
                                         <ChevronLeft className="w-3.5 h-3.5" />
                                     </button>
                                     <span className="px-2.5 text-xs font-black text-foreground-secondary uppercase tracking-wider">
-                                        {filterType === "weekly" ? "Week" : format(ymdToLocalDate(startDate), "MMM yyyy")}
+                                        {filterType === "weekly"
+                                            ? "Week"
+                                            : cycleSettings.startDay !== 1 && startDate && endDate
+                                            ? `${format(ymdToLocalDate(startDate), "MMM d")} - ${format(ymdToLocalDate(endDate), "MMM d, yyyy")}`
+                                            : startDate
+                                            ? format(ymdToLocalDate(startDate), "MMMM yyyy")
+                                            : ""}
                                     </span>
                                     <button
                                         onClick={handleNextPeriod}

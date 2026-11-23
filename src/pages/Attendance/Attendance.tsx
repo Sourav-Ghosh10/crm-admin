@@ -237,6 +237,32 @@ const Attendance: React.FC = () => {
     const [total, setTotal] = useState(0);
     const [totalPages, setTotalPages] = useState(0);
 
+    // Filter change handlers that always reset pagination to page 1
+    const handleStatusFilterChange = (newStatus: string) => {
+        setStatusFilter(newStatus);
+        setPage(1);
+    };
+
+    const handleDepartmentFilterChange = (newDept: string) => {
+        setDepartmentFilter(newDept);
+        setPage(1);
+    };
+
+    const handleDesignationFilterChange = (newDesig: string) => {
+        setDesignationFilter(newDesig);
+        setPage(1);
+    };
+
+    const handleLocationFilterChange = (newLoc: string) => {
+        setLocationFilter(newLoc);
+        setPage(1);
+    };
+
+    // Reset page to 1 when search query changes
+    useEffect(() => {
+        setPage(1);
+    }, [debouncedSearchTerm]);
+
     useEffect(() => {
         const params: Record<string, string> = {
             limit: limit.toString()
@@ -815,7 +841,7 @@ const Attendance: React.FC = () => {
                         "cursor-pointer hover:border-info",
                         statusFilter === "all" && "ring-2 ring-info"
                     )}
-                    onClick={() => setStatusFilter("all")}
+                    onClick={() => handleStatusFilterChange("all")}
                 />
                 <StatCard
                     title="Present Today"
@@ -826,7 +852,7 @@ const Attendance: React.FC = () => {
                         "cursor-pointer hover:border-success",
                         statusFilter === "present" && "ring-2 ring-success"
                     )}
-                    onClick={() => setStatusFilter("present")}
+                    onClick={() => handleStatusFilterChange("present")}
                 />
                 <StatCard
                     title="Late Arrivals"
@@ -837,7 +863,7 @@ const Attendance: React.FC = () => {
                         "cursor-pointer hover:border-warning",
                         statusFilter === "late" && "ring-2 ring-warning"
                     )}
-                    onClick={() => setStatusFilter("late")}
+                    onClick={() => handleStatusFilterChange("late")}
                 />
                 <StatCard
                     title="Absent"
@@ -848,7 +874,7 @@ const Attendance: React.FC = () => {
                         "cursor-pointer hover:border-error",
                         statusFilter === "absent" && "ring-2 ring-error"
                     )}
-                    onClick={() => setStatusFilter("absent")}
+                    onClick={() => handleStatusFilterChange("absent")}
                 />
                 <StatCard
                     title="On Leave"
@@ -859,7 +885,7 @@ const Attendance: React.FC = () => {
                         "cursor-pointer hover:border-primary",
                         statusFilter === "on-leave" && "ring-2 ring-primary"
                     )}
-                    onClick={() => setStatusFilter("on-leave")}
+                    onClick={() => handleStatusFilterChange("on-leave")}
                 />
             </div>
 
@@ -1001,7 +1027,7 @@ const Attendance: React.FC = () => {
                                 id: "status",
                                 label: "Status",
                                 value: statusFilter,
-                                onChange: setStatusFilter,
+                                onChange: handleStatusFilterChange,
                                 options: [
                                     { value: "all", label: "All Status" },
                                     { value: "present", label: "Present" },
@@ -1017,7 +1043,7 @@ const Attendance: React.FC = () => {
                                 id: "department",
                                 label: "Department",
                                 value: departmentFilter,
-                                onChange: setDepartmentFilter,
+                                onChange: handleDepartmentFilterChange,
                                 options: [
                                     { value: "all", label: "All Depts" },
                                     ...departments.map(dep => ({
@@ -1030,7 +1056,7 @@ const Attendance: React.FC = () => {
                                 id: "designation",
                                 label: "Designation",
                                 value: designationFilter,
-                                onChange: setDesignationFilter,
+                                onChange: handleDesignationFilterChange,
                                 options: [
                                     { value: "all", label: "All Desigs" },
                                     ...designations.map(des => ({
@@ -1043,7 +1069,7 @@ const Attendance: React.FC = () => {
                                 id: "location",
                                 label: "Work Location",
                                 value: locationFilter,
-                                onChange: setLocationFilter,
+                                onChange: handleLocationFilterChange,
                                 options: [
                                     { value: "all", label: "All Locations" },
                                     ...locations.map(loc => ({
