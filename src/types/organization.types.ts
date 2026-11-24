@@ -29,6 +29,7 @@ export interface OfficeLocation {
     allowedIps?: string[] | string;
     ipRestrictionMobile?: boolean;
     ipRestrictionDesktop?: boolean;
+    leaveNotificationEmails?: string[];
     createdAt?: string;
     updatedAt?: string;
 }
@@ -102,6 +103,7 @@ export interface OfficeLocationInput {
     allowedIps?: string[] | string;
     ipRestrictionMobile?: boolean;
     ipRestrictionDesktop?: boolean;
+    leaveNotificationEmails?: string[];
 }
 
 export interface Holiday {

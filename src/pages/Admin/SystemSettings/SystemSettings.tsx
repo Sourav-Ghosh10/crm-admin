@@ -253,7 +253,7 @@ const SystemSettings: React.FC = () => {
                         Leave Approval Workflow
                     </h2>
                     <p className="text-sm text-foreground-tertiary mt-1">
-                        Configure additional email addresses that should receive leave application notifications.
+                        Configure global default/fallback email addresses that receive leave application notifications. (Individual offices set in <strong className="text-foreground">Locations</strong> will receive emails for their own employees).
                     </p>
                 </div>
 

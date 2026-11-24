@@ -140,6 +140,7 @@ const LocationsList: React.FC = () => {
             allowedIps: [],
             ipRestrictionMobile: true,
             ipRestrictionDesktop: true,
+            leaveNotificationEmails: [],
             coordinates: {
                 latitude: null as any,
                 longitude: null as any,
@@ -214,6 +215,15 @@ const LocationsList: React.FC = () => {
                         <div className="flex items-center gap-2 text-xs font-medium text-foreground-tertiary">
                             <Mail className="w-3 h-3" />
                             {row.contactInfo.email}
+                        </div>
+                    )}
+                    {Array.isArray(row.leaveNotificationEmails) && row.leaveNotificationEmails.length > 0 && (
+                        <div
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg text-[10px] font-bold bg-violet-500/10 text-violet-600 border border-violet-500/20 mt-1 cursor-default"
+                            title={`Leave notifications will be sent to:\n${row.leaveNotificationEmails.join("\n")}`}
+                        >
+                            <Mail className="w-2.5 h-2.5 text-violet-500" />
+                            Leave: {row.leaveNotificationEmails.length} recipient{row.leaveNotificationEmails.length > 1 ? "s" : ""}
                         </div>
                     )}
                 </div>
